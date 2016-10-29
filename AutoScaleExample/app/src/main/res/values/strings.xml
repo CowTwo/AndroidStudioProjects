@@ -1,0 +1,4 @@
+<resources>
+    <string name="hello">Hello World, CalculatorActivity!</string>
+    <string name="app_name">AutoScaleExample</string>
+</resources>
