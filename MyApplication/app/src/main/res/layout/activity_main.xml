@@ -10,8 +10,10 @@
     android:paddingTop="@dimen/activity_vertical_margin"
     tools:context="com.example.jashun.myapplication.MainActivity">
 
-    <TextView
-        android:layout_width="wrap_content"
+    <VideoView
+        android:id="@+id/myvideoview"
+        android:layout_width="fill_parent"
         android:layout_height="wrap_content"
-        android:text="JS2 Hello World!" />
+        />
+
 </RelativeLayout>
