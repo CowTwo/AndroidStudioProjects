@@ -1,150 +1,123 @@
 package com.example.jashun.myapplication;
 
-import android.os.Environment;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
+import android.speech.RecognizerIntent;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
-import android.util.Log;
-import android.widget.MediaController;
-import android.widget.VideoView;
+import android.view.Menu;
+import android.view.View;
+import android.widget.ImageButton;
+import android.widget.TextView;
+import android.widget.Toast;
 
-import com.coremedia.iso.boxes.Container;
-import com.googlecode.mp4parser.authoring.Movie;
-import com.googlecode.mp4parser.authoring.Track;
-import com.googlecode.mp4parser.authoring.builder.DefaultMp4Builder;
-import com.googlecode.mp4parser.authoring.container.mp4.MovieCreator;
-import com.googlecode.mp4parser.authoring.tracks.AppendTrack;
-import com.googlecode.mp4parser.authoring.tracks.CroppedTrack;
-import com.googlecode.mp4parser.authoring.tracks.TextTrackImpl;
-
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.BufferOverflowException;
-import java.nio.ByteBuffer;
-import java.nio.channels.WritableByteChannel;
+import java.util.ArrayList;
+import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
 
-    String SrcPath = "/sdcard/Movies/308861_0.m4a";
+    private TextView txtSpeechInput;
+    private ImageButton btnSpeak;
+    private final int REQ_CODE_SPEECH_INPUT = 100;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        txtSpeechInput = (TextView) findViewById(R.id.txtSpeechInput);
+        btnSpeak = (ImageButton) findViewById(R.id.btnSpeak);
 
-        if (false) {
-            VideoView myVideoView = (VideoView) findViewById(R.id.myvideoview);
-            myVideoView.setVideoPath(SrcPath);
-            myVideoView.setMediaController(new MediaController(this));
-            myVideoView.requestFocus();
-            myVideoView.start();
-        }
-        else{
-            //String root = Environment.getExternalStorageDirectory().toString();
-            String audio = "/sdcard/Movies/308861_0.m4a";
-            String video = "/sdcard/Movies/308861_3.mp4";
-            String output = "/sdcard/Movies/ouput.mp4";
-            //Log.e("FILE", "audio:"+audio + " video:"+video+ " out:"+output);
-            mux(video, audio, output);
+        // hide the action bar
+        //getActionBar().hide();
+
+        btnSpeak.setOnClickListener(new View.OnClickListener() {
+
+            @Override
+            public void onClick(View v) {
+                promptSpeechInput();
+            }
+        });
+
+    }
+
+    /**
+     * Showing google speech input dialog
+     * */
+    private void promptSpeechInput() {
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
+        intent.putExtra(RecognizerIntent.EXTRA_PROMPT,
+                getString(R.string.speech_prompt));
+        try {
+            startActivityForResult(intent, REQ_CODE_SPEECH_INPUT);
+        } catch (ActivityNotFoundException a) {
+            Toast.makeText(getApplicationContext(),
+                    getString(R.string.speech_not_supported),
+                    Toast.LENGTH_SHORT).show();
         }
     }
 
-    public boolean mux(String videoFile, String audioFile, String outputFile) {
-        Movie video;
+    /**
+     * Receiving speech input
+     * */
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        switch (requestCode) {
+            case REQ_CODE_SPEECH_INPUT: {
+                if (resultCode == RESULT_OK && null != data) {
+
+                    ArrayList<String> result = data
+                            .getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+                    txtSpeechInput.setText(result.get(0));
+                    logToFile(result.get(0)+"\n");
+                }
+                break;
+            }
+
+        }
+    }
+
+    private Boolean logToFile(String fcontent){
         try {
-            video = new MovieCreator().build(videoFile);
-        } catch (RuntimeException e) {
-            e.printStackTrace();
-            return false;
+
+            String fpath = "/sdcard/JsKtv/VoiceCmdLog.txt";
+
+            File file = new File(fpath);
+
+            // If file does not exists, then create it
+            if (!file.exists()) {
+                file.createNewFile();
+            }
+
+            FileWriter fw = new FileWriter(file.getAbsoluteFile(), true); //the true will append the new data
+            BufferedWriter bw = new BufferedWriter(fw);
+            bw.write(fcontent);
+            bw.close();
+
+            //Log.d("Suceess","Sucess");
+            return true;
+
         } catch (IOException e) {
             e.printStackTrace();
             return false;
         }
-
-        Movie audio;
-        try {
-            audio = new MovieCreator().build(audioFile);
-        } catch (IOException e) {
-            e.printStackTrace();
-            return false;
-        } catch (NullPointerException e) {
-            e.printStackTrace();
-            return false;
-        }
-
-        Track audioTrack = audio.getTracks().get(0);
-        video.addTrack(audioTrack);
-
-        Container out = new DefaultMp4Builder().build(video);
-
-        FileOutputStream fos;
-        try {
-            fos = new FileOutputStream(outputFile);
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-            return false;
-        }
-        BufferedWritableFileByteChannel byteBufferByteChannel = new BufferedWritableFileByteChannel(fos);
-        try {
-            out.writeContainer(byteBufferByteChannel);
-            byteBufferByteChannel.close();
-            fos.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-            return false;
-        }
+    }
+    /*
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        // Inflate the menu; this adds items to the action bar if it is present.
+        getMenuInflater().inflate(R.menu.main, menu);
         return true;
     }
+    */
 
-    private static class BufferedWritableFileByteChannel implements WritableByteChannel {
-        private static final int BUFFER_CAPACITY = 1000000;
-
-        private boolean isOpen = true;
-        private final OutputStream outputStream;
-        private final ByteBuffer byteBuffer;
-        private final byte[] rawBuffer = new byte[BUFFER_CAPACITY];
-
-        private BufferedWritableFileByteChannel(OutputStream outputStream) {
-            this.outputStream = outputStream;
-            this.byteBuffer = ByteBuffer.wrap(rawBuffer);
-        }
-
-        @Override
-        public int write(ByteBuffer inputBuffer) throws IOException {
-            int inputBytes = inputBuffer.remaining();
-
-            if (inputBytes > byteBuffer.remaining()) {
-                dumpToFile();
-                byteBuffer.clear();
-
-                if (inputBytes > byteBuffer.remaining()) {
-                    throw new BufferOverflowException();
-                }
-            }
-
-            byteBuffer.put(inputBuffer);
-
-            return inputBytes;
-        }
-
-        @Override
-        public boolean isOpen() {
-            return isOpen;
-        }
-
-        @Override
-        public void close() throws IOException {
-            dumpToFile();
-            isOpen = false;
-        }
-        private void dumpToFile() {
-            try {
-                outputStream.write(rawBuffer, 0, byteBuffer.position());
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
-    }
 
 }
