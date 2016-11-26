@@ -6,6 +6,8 @@ public class Song {
 	private String album;
 	private String ktvFilePath;
 	private String normalFilePath;
+	private int songNo;
+	private int songPri;
 	
 	public long getId() {
 		return id;
@@ -29,4 +31,8 @@ public class Song {
 	public String getKtvFilePath(){return ktvFilePath;}
 	public void setNormalFilePath(String normalFilePath){this.normalFilePath = normalFilePath;}
 	public String getNormalFilePath(){return normalFilePath;}
+	public int getSongNo() {return songNo;}
+	public void setSongNo(int songNo){this.songNo = songNo;}
+	public int getSongPri() {return songPri;}
+	public void setSongPri(int songPri){this.songPri = songPri;}
 }

@@ -1,18 +1,32 @@
 package com.example.jashun.jsktv;
 
+import android.content.ActivityNotFoundException;
+import android.content.Context;
+import android.content.Intent;
 import android.media.MediaPlayer;
+import android.net.wifi.WifiManager;
 import android.os.Environment;
+import android.os.Handler;
+import android.speech.RecognizerIntent;
+import android.support.annotation.NonNull;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
 import android.widget.MediaController;
 import android.widget.TextView;
+import android.widget.Toast;
 import android.widget.VideoView;
 
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.FilenameFilter;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.LinkedList;
+import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -20,6 +34,7 @@ import static java.lang.Integer.parseInt;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener, MediaPlayer.OnCompletionListener{
     private Button btn_play, btn_stop, btn_repeat, btn_cancel_repeat, btn_prev, btn_favor, btn_next, btn_type_normal, btn_type_karaoke;
+    private Button btn_find_by_voice;
     private TextView txt_title;
     private File ktvDir = new File("/sdcard/JsKtv/");
     private File[] ktvFiles;
@@ -28,7 +43,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private int index;
     private boolean isRepeat;
     private boolean isTypeKaraoke;
-
+    private final int REQ_CODE_SPEECH_INPUT = 100;
+    private Handler myHandler;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -38,15 +54,18 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         index = 0;
         isRepeat = false;
         isTypeKaraoke = true;
+        myHandler = new Handler();
 
         initView();
         getKtvFiles();
         prioritizeMusic();
+        printSongName2File();
     }
 
     @Override
     protected void onDestroy() {
         doStop();
+        myHandler.removeCallbacks(DebounceFindButton);
 
         super.onDestroy();
     }
@@ -63,6 +82,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         btn_type_normal = (Button) findViewById(R.id.btn_type_normal);
         btn_type_karaoke = (Button) findViewById(R.id.btn_type_karaoke);
         btn_favor = (Button) findViewById(R.id.btn_favor);
+        btn_find_by_voice = (Button) findViewById(R.id.btn_find_by_voice);
 
         btn_stop.setEnabled(false);
         btn_cancel_repeat.setEnabled(false);
@@ -77,6 +97,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         btn_type_normal.setOnClickListener(this);
         btn_type_karaoke.setOnClickListener(this);
         btn_favor.setOnClickListener(this);
+        btn_find_by_voice.setOnClickListener(this);
 
         txt_title = (TextView) findViewById(R.id.txt_title);
     }
@@ -88,6 +109,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 doPlay();
                 break;
             case R.id.btn_stop:
+                turnOnWiFi();
                 doStop();
                 break;
             case R.id.btn_next:
@@ -115,10 +137,23 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             case R.id.btn_favor:
                 doFavor();
                 break;
+            case R.id.btn_find_by_voice:
+                // Disable WiFi to make voice recognition more stable by using google off-line recognition. Get rid of  possible unstable link issue.
+                turnOffWiFi();
+                btn_find_by_voice.setEnabled(false);
+                promptSpeechInput();
+                myHandler.postDelayed(DebounceFindButton, 3000);
+                break;
             default:
                 break;
         }
     }
+
+    private Runnable DebounceFindButton = new Runnable() {
+        public void run() {
+            btn_find_by_voice.setEnabled(true);
+        }
+    };
 
     @Override
     public void onCompletion(MediaPlayer mp) {
@@ -159,7 +194,12 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             myVideoView.setOnCompletionListener(this);
             myVideoView.requestFocus();
             myVideoView.start();
-            txt_title.setText(songList.get(index).getSongName());
+            int songNo = songList.get(index).getSongNo();
+            if (songNo>0) {
+                txt_title.setText(songList.get(index).getSongName() + "(" + String.valueOf(songNo) + ")");
+            }else{
+                txt_title.setText(songList.get(index).getSongName());
+            }
         }
         else{
             txt_title.setText("Invalid FilePath");
@@ -224,7 +264,36 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         doPlay();
     }
 
-
+    private String getSongNameFromFilename(String fileName){
+        String regularExpression = "(.*)(_Type)(.*)";
+        Pattern pattern = Pattern.compile(regularExpression, Pattern.CASE_INSENSITIVE);
+        String songName="Empty";
+        Matcher matcher = pattern.matcher(fileName);
+        if (matcher.find()){
+            songName = matcher.group(1);
+        }
+        return songName;
+    }
+    private int getSongNoFromKtvFilename(String ktvFileName){
+        String regularExpression = "(_JsNo)([0-9]+)(_)";
+        Pattern pattern = Pattern.compile(regularExpression, Pattern.CASE_INSENSITIVE);
+        int songNo = 0;
+        Matcher matcher = pattern.matcher(ktvFileName);
+        if (matcher.find()){
+            songNo = parseInt(matcher.group(2));
+        }
+        return songNo;
+    }
+    private int getSongPriFromKtvFilename(String ktvFileName){
+        String regularExpression = "(_JsPri)([0-9]+)(_)";
+        Pattern pattern = Pattern.compile(regularExpression, Pattern.CASE_INSENSITIVE);
+        int songPri = 0;
+        Matcher matcher = pattern.matcher(ktvFileName);
+        if (matcher.find()){
+            songPri = parseInt(matcher.group(2));
+        }
+        return songPri;
+    }
     private void getKtvFiles() {
         if (ktvDir.exists() && ktvDir.isDirectory()) {
             ktvFiles = ktvDir.listFiles(new FilenameFilter() {
@@ -239,78 +308,48 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             }
 
             songList = new LinkedList<Song>();
-            String regularExpression = "(.*)(_Type)(.*)";
-            Pattern pattern = Pattern.compile(regularExpression, Pattern.CASE_INSENSITIVE);
             for (int i = 0; i < ktvFiles.length; i++) {
-
-                String songName="Empty";
-                Matcher matcher = pattern.matcher(ktvFiles[i].getName());
-                if (matcher.find()){
-                    songName = matcher.group(1);
-                }
-
+                String songName= getSongNameFromFilename(ktvFiles[i].getName());
                 String songPath = ktvFiles[i].getAbsolutePath();
 
                 boolean isSongNameExisted = false;
+                Song oldSong=null, song=null;
                 for (int j=0;j<songList.size();j++){
-                    Song oldSong = songList.get(j);
+                    oldSong = songList.get(j);
                     if (oldSong.getSongName().equals(songName)){
                         isSongNameExisted = true;
-
-                        if (songPath.contains("_TypeKaraoke_")){
-                            oldSong.setKtvFilePath(songPath);
-                        }
-                        else{
-                            oldSong.setNormalFilePath(songPath);
-                        }
-
                         break;
                     }
                 }
-                if (!isSongNameExisted) {
-                    Song song = new Song();
-
+                if (isSongNameExisted){
+                    song = oldSong;
+                } else {
+                    song = new Song();
                     song.setSongName(songName);
-                    if (songPath.contains("_TypeKaraoke_")){
-                        song.setKtvFilePath(songPath);
-                    }
-                    else{
-                        song.setNormalFilePath(songPath);
-                    }
+                    song.setSongNo(0);
+                    song.setSongPri(0);
                     songList.add(song);
+                }
+                if (songPath.contains("_TypeKaraoke_")){
+                    song.setKtvFilePath(songPath);
+                    song.setSongNo(getSongNoFromKtvFilename(songPath));
+                    song.setSongPri(getSongPriFromKtvFilename(songPath));
+                }
+                else{
+                    song.setNormalFilePath(songPath);
                 }
             }
         }
-        return;
     }
     private void prioritizeMusic(){
         int totalSongCnt = songList.size();
         int currentPos = 0;
         int ii;
 
-        String regularExpression = "(_JsPri)([0-9]+)(_)";
-        Pattern pattern = Pattern.compile(regularExpression, Pattern.CASE_INSENSITIVE);
-
         for (currentPos=0;currentPos<totalSongCnt;currentPos++){
-            if (songList.get(currentPos).getKtvFilePath()==null){
-                continue;
-            }
-
-            Matcher matcher = pattern.matcher(songList.get(currentPos).getKtvFilePath());
-            int songPri = 0;
-            if (matcher.find()){
-                songPri = parseInt(matcher.group(2));
-            }
-
+            int songPri = songList.get(currentPos).getSongPri();
             for (ii=0;ii<currentPos;ii++){
-                if (songList.get(ii).getKtvFilePath()==null){
-                    continue;
-                }
-                Matcher matcher1 = pattern.matcher(songList.get(ii).getKtvFilePath());
-                int tmpPri = 0;
-                if (matcher1.find()){
-                    tmpPri = parseInt(matcher1.group(2));
-                }
+                int tmpPri = songList.get(ii).getSongPri();
                 if (songPri>tmpPri){
                     Song song = songList.get(currentPos);
                     songList.remove(currentPos);
@@ -321,5 +360,140 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
+    /**
+     * Showing google speech input dialog
+     * */
+    private void promptSpeechInput() {
+        doStop();
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
+        intent.putExtra(RecognizerIntent.EXTRA_PROMPT,
+                "say input sentence");
+        try {
+            startActivityForResult(intent, REQ_CODE_SPEECH_INPUT);
+        } catch (ActivityNotFoundException a) {
+            Toast.makeText(getApplicationContext(),
+                    "Speech not supported",
+                    Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * Receiving speech input
+     * */
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        switch (requestCode) {
+            case REQ_CODE_SPEECH_INPUT: {
+                if (resultCode == RESULT_OK && null != data) {
+
+                    ArrayList<String> result = data
+                            .getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+                    int matchedSongIdx = findSongIdxByVoiceCmd(result.get(0));
+                    if (matchedSongIdx!=-1){
+                        index = matchedSongIdx;
+                        doPlay();
+                    }else{
+                        txt_title.setText("無:"+result.get(0));
+                    }
+                }
+                break;
+            }
+
+        }
+    }
+
+    private int findSongIdxByVoiceCmd(String voiceCmd){
+        // 去除空白
+        voiceCmd = voiceCmd.replaceAll("\\s+", "");
+
+        // Algo
+        int maxMatchedCnt = 0;
+        int maxMatchedSongIdx = -1;
+
+        if (isNumeric(voiceCmd)){
+            int songNo = parseInt(voiceCmd);
+            for (int j = 0; j < songList.size(); j++) {
+                if (songList.get(j).getSongNo()==songNo){
+                    maxMatchedSongIdx = j;
+                }
+            }
+        } else {
+            for (int j = 0; j < songList.size(); j++) {
+                int matchedCharCnt = 0;
+                String songName = songList.get(j).getSongName();
+                int voiceCmdLen = voiceCmd.length();
+
+                String tmpSongName = songName;
+                for (int k = 0; k <voiceCmdLen; k++) {
+                    if (tmpSongName.indexOf(voiceCmd.charAt(k)) != -1) {
+                        matchedCharCnt += 1;
+                        tmpSongName = tmpSongName.replaceFirst(Character.toString(voiceCmd.charAt(k)), "");
+                    }
+                }
+                if (matchedCharCnt > maxMatchedCnt) {
+                    maxMatchedCnt = matchedCharCnt;
+                    maxMatchedSongIdx = j;
+                }
+                if (maxMatchedCnt==voiceCmdLen){
+                    break;
+                }
+            }
+        }
+        return maxMatchedSongIdx;
+    }
+    public boolean isNumeric(String str)
+    {
+        Pattern pattern = Pattern.compile("[0-9]*");
+        Matcher isNum = pattern.matcher(str);
+        if( !isNum.matches() )
+        {
+            return false;
+        }
+        return true;
+    }
+
+    private void printSongName2File(){
+        try {
+            File file = new File("/sdcard/JsKtv/SongNameList.txt");
+
+            // If file does not exists, then create it
+            if (!file.exists()) {
+                file.createNewFile();
+            }
+
+            FileWriter fw = new FileWriter(file.getAbsoluteFile(), true); //the true will append the new data
+            BufferedWriter bw = new BufferedWriter(fw);
+
+            for (int j = 0; j < songList.size(); j++) {
+                int songNo = songList.get(j).getSongNo();
+                if (songNo>0) {
+                    bw.write(songList.get(j).getSongName() + "(" + String.valueOf(songNo) + ")"+"\n");
+                }else{
+                    bw.write(songList.get(j).getSongName()+"\n");
+                }
+            }
+            bw.close();
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+    private void turnOffWiFi(){
+        WifiManager wifi =(WifiManager)getSystemService(Context.WIFI_SERVICE);
+        if(wifi.isWifiEnabled()){
+            wifi.setWifiEnabled(false);
+        }
+    }
+    private void turnOnWiFi(){
+        WifiManager wifi =(WifiManager)getSystemService(Context.WIFI_SERVICE);
+        if( ! wifi.isWifiEnabled()){
+            wifi.setWifiEnabled(true);
+        }
+    }
 }
 
