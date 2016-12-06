@@ -466,9 +466,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 file.createNewFile();
             }
 
-            FileWriter fw = new FileWriter(file.getAbsoluteFile(), true); //the true will append the new data
+            FileWriter fw = new FileWriter(file.getAbsoluteFile(), false); //the true will append the new data
             BufferedWriter bw = new BufferedWriter(fw);
 
+            int maxSongNo=0;
             for (int j = 0; j < songList.size(); j++) {
                 int songNo = songList.get(j).getSongNo();
                 if (songNo>0) {
@@ -476,7 +477,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 }else{
                     bw.write(songList.get(j).getSongName()+"\n");
                 }
+                if (songNo>maxSongNo){
+                    maxSongNo = songNo;
+                }
             }
+            bw.write("maxSongNo (numeric ID for Song) is"+String.valueOf(maxSongNo)+"\n");
             bw.close();
 
         } catch (IOException e) {
