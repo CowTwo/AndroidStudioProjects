@@ -1,123 +1,148 @@
 package com.example.jashun.myapplication;
 
-import android.content.ActivityNotFoundException;
+import android.Manifest;
 import android.content.Intent;
-import android.speech.RecognizerIntent;
+import android.content.pm.PackageManager;
+import android.database.Cursor;
+import android.net.Uri;
+import android.provider.ContactsContract;
+import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
-import android.view.Menu;
 import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Adapter;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
+import android.widget.Button;
 import android.widget.ImageButton;
+import android.widget.ListAdapter;
+import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Locale;
+public class MainActivity extends AppCompatActivity implements View.OnClickListener, AdapterView.OnItemClickListener{
 
-public class MainActivity extends AppCompatActivity {
+    private Button btn_get_contact;
+    private TextView txt_phone_num, txt_phone_name;
+    ListView listview_contact;
 
-    private TextView txtSpeechInput;
-    private ImageButton btnSpeak;
-    private final int REQ_CODE_SPEECH_INPUT = 100;
+    class Struct {
+        public String iName;
+        public String iDesc;
+
+        Struct(String name, String desc) {
+            iName = name;
+            iDesc = desc;
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        txtSpeechInput = (TextView) findViewById(R.id.txtSpeechInput);
-        btnSpeak = (ImageButton) findViewById(R.id.btnSpeak);
-
-        // hide the action bar
-        //getActionBar().hide();
-
-        btnSpeak.setOnClickListener(new View.OnClickListener() {
-
-            @Override
-            public void onClick(View v) {
-                promptSpeechInput();
-            }
-        });
-
+        initView();
     }
 
-    /**
-     * Showing google speech input dialog
-     * */
-    private void promptSpeechInput() {
-        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
-        intent.putExtra(RecognizerIntent.EXTRA_PROMPT,
-                getString(R.string.speech_prompt));
-        try {
-            startActivityForResult(intent, REQ_CODE_SPEECH_INPUT);
-        } catch (ActivityNotFoundException a) {
-            Toast.makeText(getApplicationContext(),
-                    getString(R.string.speech_not_supported),
-                    Toast.LENGTH_SHORT).show();
+    private void initView() {
+        btn_get_contact = (Button) findViewById(R.id.btn_get_contact);
+        txt_phone_num = (TextView) findViewById(R.id.txt_phone_num);
+        txt_phone_name = (TextView) findViewById(R.id.txt_phone_name);
+
+        btn_get_contact.setOnClickListener(this);
+
+        listview_contact = (ListView) findViewById(R.id.listview_contact);
+        Struct[] mItems = buildData(30, "Name", "Desc");
+        ListAdapter mAdapter =
+                new ArrayAdapter<Struct>(this,
+                        android.R.layout.simple_list_item_2,
+                        android.R.id.text1,
+                        mItems) {
+                    @Override
+                    public View getView(int pos, View convert, ViewGroup group) {
+                        View v = super.getView(pos, convert, group);
+                        TextView t1 = (TextView) v.findViewById(android.R.id.text1);
+                        TextView t2 = (TextView) v.findViewById(android.R.id.text2);
+                        t1.setText(getItem(pos).iName);
+                        t1.setTextSize(50);
+                        t2.setText(getItem(pos).iDesc);
+                        t2.setTextSize(10);
+                        return v;
+                    }
+                };
+        listview_contact.setAdapter(mAdapter);
+        listview_contact.setOnItemClickListener(this);
+    }
+
+    private Struct[] buildData(int length, String name, String desc) {
+        Struct[] array = new Struct[length];
+        for (int i = 0; i < length; i++) {
+            array[i] = new Struct(name + ":" + i, desc + "," + i);
         }
+        return array;
     }
 
-    /**
-     * Receiving speech input
-     * */
     @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-
-        switch (requestCode) {
-            case REQ_CODE_SPEECH_INPUT: {
-                if (resultCode == RESULT_OK && null != data) {
-
-                    ArrayList<String> result = data
-                            .getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
-                    txtSpeechInput.setText(result.get(0));
-                    logToFile(result.get(0)+"\n");
-                }
+    public void onClick(View v) {
+        switch (v.getId()) {
+            case R.id.btn_get_contact:
+                getContactInfo();
                 break;
-            }
-
+            default:
+                break;
         }
     }
 
-    private Boolean logToFile(String fcontent){
-        try {
-
-            String fpath = "/sdcard/JsKtv/VoiceCmdLog.txt";
-
-            File file = new File(fpath);
-
-            // If file does not exists, then create it
-            if (!file.exists()) {
-                file.createNewFile();
-            }
-
-            FileWriter fw = new FileWriter(file.getAbsoluteFile(), true); //the true will append the new data
-            BufferedWriter bw = new BufferedWriter(fw);
-            bw.write(fcontent);
-            bw.close();
-
-            //Log.d("Suceess","Sucess");
-            return true;
-
-        } catch (IOException e) {
-            e.printStackTrace();
-            return false;
-        }
-    }
-    /*
     @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        // Inflate the menu; this adds items to the action bar if it is present.
-        getMenuInflater().inflate(R.menu.main, menu);
-        return true;
-    }
-    */
+    public void onItemClick(AdapterView<?> adapterView,
+                            View view,
+                            int position,
+                            long l) {
 
+        Adapter adapter = adapterView.getAdapter();
+        Struct clicked = (Struct) adapter.getItem(position);
+        Toast.makeText(getApplicationContext(),
+                clicked.iName, Toast.LENGTH_SHORT).show();
+        // 035396386
+        Intent callIntent = new Intent(Intent.ACTION_CALL);
+        callIntent.setData(Uri.parse("tel:035396386"));
+
+        if (ActivityCompat.checkSelfPermission(MainActivity.this,
+                Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        startActivity(callIntent);
+
+    }
+    private void getContactInfo(){
+        Cursor cursor = getContentResolver().query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI, null, null,null, null);
+        while (cursor.moveToNext()) {
+            String name =cursor.getString(cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME));
+            txt_phone_name.setText(name);
+
+            String contact_Id = cursor.getString(cursor.getColumnIndex(ContactsContract.Contacts._ID));
+            Cursor cursor_phone = getContentResolver().query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI, null,
+                    ContactsContract.CommonDataKinds.Phone.CONTACT_ID + " = " + contact_Id, null, null);
+            while (cursor_phone.moveToNext()) {
+                String phNumber = cursor_phone.getString(cursor_phone
+                        .getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER));
+
+                int PHONE_TYPE =cursor_phone.getInt(cursor_phone.getColumnIndex(ContactsContract.CommonDataKinds.Phone.TYPE));
+                switch (PHONE_TYPE) {
+                    case ContactsContract.CommonDataKinds.Phone.TYPE_HOME:
+                        // home number
+                        break;
+                    case ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE:
+                        // mobile number
+                        txt_phone_num.setText("Mobile:"+phNumber);
+                        break;
+                    case ContactsContract.CommonDataKinds.Phone.TYPE_WORK:
+                        // work(office) number
+                        break;
+                }
+            }
+
+        }
+    }
 
 }

@@ -10,17 +10,6 @@
     android:paddingTop="@dimen/activity_vertical_margin"
     tools:context="com.example.jashun.myapplication.MainActivity">
 
-    <TextView
-        android:id="@+id/txtSpeechInput"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_alignParentTop="true"
-        android:layout_centerHorizontal="true"
-        android:layout_marginTop="100dp"
-        android:textColor="@color/white"
-        android:textSize="26dp"
-        android:textStyle="normal" />
-
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -28,24 +17,49 @@
         android:layout_centerHorizontal="true"
         android:layout_marginBottom="60dp"
         android:gravity="center"
-        android:orientation="vertical" >
+        android:orientation="vertical"
+        android:id="@+id/linearLayout">
 
-        <ImageButton
-            android:id="@+id/btnSpeak"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="@null"
-            android:src="@drawable/ico_mic" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:text="@string/tap_on_mic"
-            android:textColor="@color/white"
-            android:textSize="15dp"
-            android:textStyle="normal" />
     </LinearLayout>
+
+    <TextView
+        android:text="phone number"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:id="@+id/txt_phone_num"
+        android:layout_alignBaseline="@+id/txt_phone_name"
+        android:layout_alignBottom="@+id/txt_phone_name"
+        android:layout_alignParentRight="true"
+        android:layout_alignParentEnd="true"
+        android:layout_marginRight="8dp"
+        android:layout_marginEnd="8dp" />
+
+    <TextView
+        android:text="phone name"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:id="@+id/txt_phone_name"
+        android:layout_below="@+id/btn_get_contact"
+        android:layout_alignParentLeft="true"
+        android:layout_alignParentStart="true" />
+
+    <Button
+        android:text="Get Contact"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:id="@+id/btn_get_contact"
+        android:layout_alignParentTop="true"
+        android:layout_centerHorizontal="true" />
+
+    <ListView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@+id/txt_phone_num"
+        android:layout_toStartOf="@+id/txt_phone_num"
+        android:layout_marginTop="41dp"
+        android:layout_alignRight="@+id/txt_phone_num"
+        android:layout_alignEnd="@+id/txt_phone_num"
+        android:id="@+id/listview_contact" />
 
 
 </RelativeLayout>
