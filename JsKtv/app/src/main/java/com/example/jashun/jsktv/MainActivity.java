@@ -38,7 +38,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private TextView txt_title;
     private File ktvDir = new File("/sdcard/JsKtv/");
     private File[] ktvFiles;
-    VideoView myVideoView;
+    private VideoView myVideoView;
     private LinkedList<Song> songList;
     private int index;
     private boolean isRepeat;
