@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">SampleCast</string>
+    <string name="app_id">B5B321B8</string>     <!-- SAMPLE_APPLICATION_ID  4F8B3483 -->
+    <!-- <string name="app_id">CC1AD845</string>  -->    <!-- DEFAULT_MEDIA_RECEIVER_APPLICATION_ID   CC1AD845-->
+    <string name="media_route_menu_title">Play on&#8230;</string>
+</resources>

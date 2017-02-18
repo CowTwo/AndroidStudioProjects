@@ -1,0 +1,22 @@
+<resources>
+
+    <!-- Base application theme. -->
+    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
+        <!-- Customize your theme here. -->
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+
+        <item name="android:actionBarSize">100dp</item>
+        <item name="actionBarSize">100dp</item>
+
+        <item name="android:actionButtonStyle">@style/MyActionButtonStyle</item>
+        <item name="actionButtonStyle">@style/MyActionButtonStyle</item>
+
+    </style>
+
+    <style name="MyActionButtonStyle" parent="@style/Widget.AppCompat.ActionButton">
+        <item name="actionBarSize">100dp</item>
+    </style>
+
+</resources>
