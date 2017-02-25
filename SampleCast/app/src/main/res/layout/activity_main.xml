@@ -13,10 +13,11 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Hello World!" />
+        android:text="Hello World!"
+        android:id="@+id/txt_info" />
 
     <Button
-        android:text="Button"
+        android:text="Play"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_alignParentBottom="true"
@@ -24,4 +25,13 @@
         android:layout_alignParentStart="true"
         android:layout_marginBottom="48dp"
         android:id="@+id/btn_play" />
+
+    <Button
+        android:text="Pause"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignTop="@+id/btn_play"
+        android:layout_alignParentRight="true"
+        android:layout_alignParentEnd="true"
+        android:id="@+id/btn_stop" />
 </RelativeLayout>
