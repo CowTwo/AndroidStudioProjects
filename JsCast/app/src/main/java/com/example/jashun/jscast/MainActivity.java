@@ -1,8 +1,12 @@
 package com.example.jashun.jscast;
 
+import android.content.ActivityNotFoundException;
 import android.content.Context;
+import android.content.Intent;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.os.Environment;
+import android.speech.RecognizerIntent;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -10,13 +14,16 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
+import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.LinkedList;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -41,12 +48,16 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         STOP
     }
 
-    private Button btn_play_karaoke, btn_stop;
+    private Button btn_play_karaoke, btn_play_family, btn_stop, btn_next, btn_prev, btn_repeat, btn_cancel_repeat;
+    private Button btn_find_by_voice;
+    private final int REQ_CODE_SPEECH_INPUT = 100;
     private TextView txt_info;
+    private boolean isRepeat;
 
-    private File ktvDir = new File("/sdcard/JsCast/Karaoke/");
+    private File karaokeDir = new File("/sdcard/JsCast/Karaoke/");
+    private File familyDir = new File("/sdcard/JsCast/Family/");
     private File[] ktvFiles;
-    private LinkedList<Song> songList;
+    private LinkedList<Song> karaokeList, familyList, playList;
 
     private VideoServer mVideoServer;
 
@@ -56,22 +67,36 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private BtnActionState btnActionState=BtnActionState.STOP;
 
     private MenuItem mediaRouteMenuItem;
-    private CastContext mCastContext;
-    private CastSession mCastSession;
+    private CastContext mCastContext=null;
+    private CastSession mCastSession=null;
     private SessionManagerListener<CastSession> mSessionManagerListener;
-    private int m_PreviousState = -1;
+    private int m_PreviousState = MediaStatus.PLAYER_STATE_IDLE;
+    private boolean isCastConnected = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        this.setTitle("My Title");
+
         index = 0;
         isTypeKaraoke = false;
+        isRepeat = false;
 
         initView();
-        getKtvFiles();
-        prioritizeMusic();
+
+        startDebugLog2File();
+
+        karaokeList = new LinkedList<Song>();
+        getKtvFiles(karaokeList, karaokeDir);
+        prioritizeMusic(karaokeList);
+        Log.d("JS_Tag", "onCreate: TotalKaraokeFileNum ="+String.valueOf(karaokeList.size()));
+
+        familyList = new LinkedList<Song>();
+        getKtvFiles(familyList, familyDir);
+        prioritizeMusic(familyList);
+        Log.d("JS_Tag", "onCreate: TotalFamilyFileNum ="+String.valueOf(familyList.size()));
 
         startVideoServer();
 
@@ -79,6 +104,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         mCastContext = CastContext.getSharedInstance(this);
         mCastContext.registerLifecycleCallbacksBeforeIceCreamSandwich(this, savedInstanceState);
         mCastSession = mCastContext.getSessionManager().getCurrentCastSession();
+        Log.d("JS_Tag", "mCastSession (onCreate) ="+String.valueOf(mCastSession));
 
         setupCastListener();
         mCastContext.getSessionManager().addSessionManagerListener(
@@ -95,6 +121,117 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         Log.d("JS_Tag", "onCreateOptionsMenu");
 
         return true;
+    }
+    @Override
+    public boolean onPrepareOptionsMenu (Menu menu) {
+        isCastConnected = false;
+        if (mCastSession!=null){
+            isCastConnected = true;
+        }
+
+        if (isCastConnected) {
+            Log.d("JS_Tag", "menu.setGroupVisible(0,false);");
+            //menu.findItem(R.id.media_route_menu_item).setEnabled(false);
+            menu.setGroupVisible(0,false);
+            this.setTitle("連線成功");
+            showAllButtonsAfterHide();
+        }
+        else{
+            Log.d("JS_Tag", "menu.setGroupVisible(0,true);");
+            //menu.findItem(R.id.media_route_menu_item).setEnabled(true);
+            menu.setGroupVisible(0,true);
+            this.setTitle("XXX, 請連線... ==>>");
+            hideAllButtons();
+        }
+        return true;
+    }
+
+    private void hideAllButtons(){
+        btn_play_karaoke.setEnabled(false);
+        btn_play_family.setEnabled(false);
+        btn_stop.setEnabled(false);
+        btn_repeat.setEnabled(false);
+        btn_cancel_repeat.setEnabled(false);
+        btn_prev.setEnabled(false);
+        btn_next.setEnabled(false);
+        btn_find_by_voice.setEnabled(false);
+    }
+    private void showAllButtonsAfterHide(){
+        btn_play_karaoke.setEnabled(true);
+        btn_play_family.setEnabled(true);
+        btn_stop.setEnabled(false);
+        if (isRepeat){
+            btn_repeat.setEnabled(false);
+            btn_cancel_repeat.setEnabled(true);
+        } else{
+            btn_repeat.setEnabled(true);
+            btn_cancel_repeat.setEnabled(false);
+        }
+        btn_prev.setEnabled(true);
+        btn_next.setEnabled(true);
+        btn_find_by_voice.setEnabled(true);
+    }
+
+    @Override
+    protected void onDestroy() {
+        Log.d("JS_Tag", "onDestroy");
+        doStop();
+        mVideoServer.stop();
+        super.onDestroy();
+    }
+
+    private void startDebugLog2File(){
+        if ( isExternalStorageWritable() ) {
+
+            File appDirectory = new File( Environment.getExternalStorageDirectory() + "/MyPersonalAppFolder" );
+            File logDirectory = new File( appDirectory + "/log" );
+            File logFile = new File( logDirectory, "logcat_JsCast.txt" );
+
+            // create app folder
+            if ( !appDirectory.exists() ) {
+                appDirectory.mkdir();
+            }
+
+            // create log folder
+            if ( !logDirectory.exists() ) {
+                logDirectory.mkdir();
+            }
+
+            // clear the previous logcat and then write the new one to the file
+            try {
+                Runtime.getRuntime().exec("rm "+logFile);
+                Process process = Runtime.getRuntime().exec( "logcat -c");
+                // 為了知道log發生的時間點，可以利用-v time這個參數
+                // logcat -s TAG 印出特定TAG的訊息
+                process = Runtime.getRuntime().exec( "logcat -f " + logFile + " -v time -s JS_Tag");
+                //process = Runtime.getRuntime().exec( "logcat -f " + logFile + " *:S MyActivity:D MyActivity2:D");
+            } catch ( IOException e ) {
+                e.printStackTrace();
+            }
+
+        } else if ( isExternalStorageReadable() ) {
+            // only readable
+        } else {
+            // not accessible
+        }
+    }
+    /* Checks if external storage is available for read and write */
+    public boolean isExternalStorageWritable() {
+        String state = Environment.getExternalStorageState();
+        if ( Environment.MEDIA_MOUNTED.equals( state ) ) {
+            return true;
+        }
+        return false;
+    }
+
+    /* Checks if external storage is available to at least read */
+    public boolean isExternalStorageReadable() {
+        String state = Environment.getExternalStorageState();
+        if ( Environment.MEDIA_MOUNTED.equals( state ) ||
+                Environment.MEDIA_MOUNTED_READ_ONLY.equals( state ) ) {
+            return true;
+        }
+        return false;
     }
 
     private void startVideoServer(){
@@ -114,30 +251,25 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private void initView() {
         btn_play_karaoke = (Button) findViewById(R.id.btn_play_karaoke);
+        btn_play_family = (Button) findViewById(R.id.btn_play_family);
         btn_stop = (Button) findViewById(R.id.btn_stop);
-
-        //btn_repeat = (Button) findViewById(R.id.btn_repeat);
-        //btn_cancel_repeat = (Button) findViewById(R.id.btn_cancel_repeat);
-        //btn_prev = (Button) findViewById(R.id.btn_prev);
-        //btn_next = (Button) findViewById(R.id.btn_next);
-        //btn_type_normal = (Button) findViewById(R.id.btn_type_normal);
-        //btn_type_karaoke = (Button) findViewById(R.id.btn_type_karaoke);
-        //btn_find_by_voice = (Button) findViewById(R.id.btn_find_by_voice);
+        btn_next = (Button) findViewById(R.id.btn_next);
+        btn_prev = (Button) findViewById(R.id.btn_prev);
+        btn_repeat = (Button) findViewById(R.id.btn_repeat);
+        btn_cancel_repeat = (Button) findViewById(R.id.btn_cancel_repeat);
+        btn_find_by_voice = (Button) findViewById(R.id.btn_find_by_voice);
 
         btn_stop.setEnabled(false);
-        //btn_cancel_repeat.setEnabled(false);
-        //btn_type_karaoke.setEnabled(false);
+        btn_cancel_repeat.setEnabled(false);
 
         btn_play_karaoke.setOnClickListener(this);
+        btn_play_family.setOnClickListener(this);
         btn_stop.setOnClickListener(this);
-        //btn_repeat.setOnClickListener(this);
-        //btn_cancel_repeat.setOnClickListener(this);
-        //btn_prev.setOnClickListener(this);
-        //btn_next.setOnClickListener(this);
-        //btn_type_normal.setOnClickListener(this);
-        //btn_type_karaoke.setOnClickListener(this);
-        //btn_favor.setOnClickListener(this);
-        //btn_find_by_voice.setOnClickListener(this);
+        btn_next.setOnClickListener(this);
+        btn_prev.setOnClickListener(this);
+        btn_repeat.setOnClickListener(this);
+        btn_cancel_repeat.setOnClickListener(this);
+        btn_find_by_voice.setOnClickListener(this);
 
         txt_info = (TextView) findViewById(R.id.txt_info);
     }
@@ -146,55 +278,191 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     public void onClick(View v) {
         switch (v.getId()) {
             case R.id.btn_play_karaoke:
+                btnActionState = BtnActionState.PLAY_KARAOKE;
+                //doStop();  Do NOT do this, 因當 Stop 與 Load 太接近，Cast Device 會skip 到 Load
                 doPlayKaraoke();
                 break;
+            case R.id.btn_play_family:
+                btnActionState = BtnActionState.PLAY_FAMILY;
+                //doStop();  Do NOT do this, 因當 Stop 與 Load 太接近，Cast Device 會skip 到 Load
+                doPlayFamily();
+                break;
             case R.id.btn_stop:
+                btnActionState = BtnActionState.STOP;
                 doStop();
+                break;
+            case R.id.btn_next:
+                if (btnActionState==BtnActionState.STOP){
+                    btnActionState = BtnActionState.PLAY_KARAOKE;
+                }
+                //doStop();  Do NOT do this, 因當 Stop 與 Load 太接近，Cast Device 會skip 到 Load
+                doNext();
+                break;
+            case R.id.btn_prev:
+                if (btnActionState==BtnActionState.STOP){
+                    btnActionState = BtnActionState.PLAY_KARAOKE;
+                }
+                //doStop();  Do NOT do this, 因當 Stop 與 Load 太接近，Cast Device 會skip 到 Load
+                doPrev();
+                break;
+            case R.id.btn_repeat:
+                isRepeat=true;
+                btn_repeat.setEnabled(false);
+                btn_cancel_repeat.setEnabled(true);
+                break;
+            case R.id.btn_cancel_repeat:
+                isRepeat=false;
+                btn_repeat.setEnabled(true);
+                btn_cancel_repeat.setEnabled(false);
+                break;
+            case R.id.btn_find_by_voice:
+                // Disable WiFi to make voice recognition more stable by using google off-line recognition. Get rid of  possible unstable link issue.
+                //turnOffWiFi();
+                //btn_find_by_voice.setEnabled(false);
+                promptSpeechInput();
+                //myHandler.postDelayed(DebounceFindButton, 3000);
                 break;
             default:
                 break;
         }
     }
+
+    private void promptSpeechInput() {
+        doStop();
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
+        intent.putExtra(RecognizerIntent.EXTRA_PROMPT,
+                "say input sentence");
+        try {
+            startActivityForResult(intent, REQ_CODE_SPEECH_INPUT);
+        } catch (ActivityNotFoundException a) {
+            Toast.makeText(getApplicationContext(),
+                    "Speech not supported",
+                    Toast.LENGTH_SHORT).show();
+        }
+    }
+    /**
+     * Receiving speech input
+     * */
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        switch (requestCode) {
+            case REQ_CODE_SPEECH_INPUT: {
+                if (resultCode == RESULT_OK && null != data) {
+
+                    ArrayList<String> result = data
+                            .getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+                    int matchedSongIdx = findSongIdxByVoiceCmd(karaokeList, result.get(0));
+                    if (matchedSongIdx!=-1){
+                        index = matchedSongIdx;
+                        doPlayKaraoke();
+                    }else{
+                        txt_info.setText("無:"+result.get(0));
+                    }
+                }
+                break;
+            }
+
+        }
+    }
+    private int findSongIdxByVoiceCmd(LinkedList<Song> songList, String voiceCmd){
+        // 去除空白
+        voiceCmd = voiceCmd.replaceAll("\\s+", "");
+
+        // Algo
+        int maxMatchedCnt = 0;
+        int maxMatchedSongIdx = -1;
+
+        if (isNumeric(voiceCmd)){
+            int songNo = parseInt(voiceCmd);
+            for (int j = 0; j < songList.size(); j++) {
+                if (songList.get(j).getSongNo()==songNo){
+                    maxMatchedSongIdx = j;
+                }
+            }
+        } else {
+            for (int j = 0; j < songList.size(); j++) {
+                int matchedCharCnt = 0;
+                String songName = songList.get(j).getSongName();
+                int voiceCmdLen = voiceCmd.length();
+
+                String tmpSongName = songName;
+                for (int k = 0; k <voiceCmdLen; k++) {
+                    if (tmpSongName.indexOf(voiceCmd.charAt(k)) != -1) {
+                        matchedCharCnt += 1;
+                        tmpSongName = tmpSongName.replaceFirst(Character.toString(voiceCmd.charAt(k)), "");
+                    }
+                }
+                if (matchedCharCnt > maxMatchedCnt) {
+                    maxMatchedCnt = matchedCharCnt;
+                    maxMatchedSongIdx = j;
+                }
+                if (maxMatchedCnt==voiceCmdLen){
+                    break;
+                }
+            }
+        }
+        return maxMatchedSongIdx;
+    }
+    public boolean isNumeric(String str)
+    {
+        Pattern pattern = Pattern.compile("[0-9]*");
+        Matcher isNum = pattern.matcher(str);
+        if( !isNum.matches() )
+        {
+            return false;
+        }
+        return true;
+    }
+
     private void doStop() {
+        Log.d("JS_Tag", "doStop");
         btn_play_karaoke.setEnabled(true);
+        btn_play_family.setEnabled(true);
         btn_stop.setEnabled(false);
-        btnActionState = BtnActionState.STOP;
 
         if (mCastSession==null){
             return;
         }
-        final RemoteMediaClient remoteMediaClient = mCastSession.getRemoteMediaClient();
+        RemoteMediaClient remoteMediaClient = mCastSession.getRemoteMediaClient();
         if (remoteMediaClient == null) {
             return;
         }
-        remoteMediaClient.pause();
-
-
+        remoteMediaClient.stop();
+        Log.d("JS_Tag", "remoteMediaClient.stop(); remoteMediaClient="+String.valueOf(remoteMediaClient));
     }
-    private void doPlayKaraoke() {
+
+    private void doPlayFamily(){
+        Log.d("JS_Tag", "doPlayFamily, index="+String.valueOf(index));
         String songFilePath;
-        if (songList == null || songList.size() == 0) {
+        playList = familyList;
+        if (playList == null || playList.size() == 0) {
             return;
         }
-        btn_play_karaoke.setEnabled(false);
-        btn_stop.setEnabled(true);
-        btnActionState = BtnActionState.PLAY_KARAOKE;
+        if (index>=playList.size()){
+            index = playList.size()-1;
+        }
 
-        if (isTypeKaraoke) {
-            songFilePath = songList.get(index).getKtvFilePath();
-        }
-        else{
-            songFilePath = songList.get(index).getNormalFilePath();
-        }
+        btn_play_family.setEnabled(false);
+        btn_play_karaoke.setEnabled(true);
+        btn_stop.setEnabled(true);
+
+        songFilePath = playList.get(index).getNormalFilePath();
+
         if (songFilePath != null) {
-            int songNo = songList.get(index).getSongNo();
+            int songNo = playList.get(index).getSongNo();
             if (songNo>0) {
-                m_SongDesc = songList.get(index).getSongName() + "(" + String.valueOf(songNo) + ")";
+                m_SongDesc = playList.get(index).getSongName() + "(" + String.valueOf(songNo) + ")";
             }else{
-                m_SongDesc = songList.get(index).getSongName();
+                m_SongDesc = playList.get(index).getSongName();
             }
             txt_info.setText(m_SongDesc);
 
+            Log.d("JS_Tag", "doPlayFamily: songFilePath="+songFilePath);
             mVideoServer.setVideoFilePath(songFilePath);
             loadRemoteMedia(/*mSeekbar.getProgress()*/ 0, true);
             //finish();
@@ -204,18 +472,101 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
-    private void doNext() {
-        if (songList == null || songList.size() == 0) {
+    private void doPlayKaraoke() {
+        Log.d("JS_Tag", "doPlayKaraoke, index="+String.valueOf(index));
+        String songFilePath;
+        playList = karaokeList;
+        if (playList == null || playList.size() == 0) {
+            return;
+        }
+        if (index>=playList.size()){
+            index = playList.size()-1;
+        }
+        btn_play_karaoke.setEnabled(false);
+        btn_play_family.setEnabled(true);
+        btn_stop.setEnabled(true);
+
+        if (isTypeKaraoke) {
+            songFilePath = playList.get(index).getKtvFilePath();
+        }
+        else{
+            songFilePath = playList.get(index).getNormalFilePath();
+        }
+        if (songFilePath != null) {
+            int songNo = playList.get(index).getSongNo();
+            if (songNo>0) {
+                m_SongDesc = playList.get(index).getSongName() + "(" + String.valueOf(songNo) + ")";
+            }else{
+                m_SongDesc = playList.get(index).getSongName();
+            }
+            txt_info.setText(m_SongDesc);
+
+            Log.d("JS_Tag", "doPlayKaraoke: songFilePath="+songFilePath);
+            mVideoServer.setVideoFilePath(songFilePath);
+            loadRemoteMedia(/*mSeekbar.getProgress()*/ 0, true);
+            //finish();
+        }
+        else{
+            txt_info.setText("Invalid FilePath");
+        }
+    }
+
+    private void doPrev(){
+        Log.d("JS_Tag", "doPrev");
+        playList = null;
+        if (btnActionState==BtnActionState.PLAY_KARAOKE) {
+            playList = karaokeList;
+        }
+        else if (btnActionState==BtnActionState.PLAY_FAMILY){
+            playList = familyList;
+        }
+
+        if (playList == null || playList.size() == 0) {
             return;
         }
 
-        if (index < songList.size() - 1) {
+        if (index >0) {
+            index--;
+        }
+        else{
+            index=playList.size()-1;
+        }
+
+        if (btnActionState==BtnActionState.PLAY_KARAOKE) {
+            doPlayKaraoke();
+        }
+        else if (btnActionState==BtnActionState.PLAY_FAMILY){
+            doPlayFamily();
+        }
+    }
+
+    private void doNext() {
+        Log.d("JS_Tag", "doNext,  btnActionState="+String.valueOf(btnActionState));
+        playList = null;
+        if (btnActionState==BtnActionState.PLAY_KARAOKE) {
+            playList = karaokeList;
+        }
+        else if (btnActionState==BtnActionState.PLAY_FAMILY){
+            playList = familyList;
+        }
+
+        if (playList == null || playList.size() == 0) {
+            return;
+        }
+
+        if (index < playList.size() - 1) {
             index++;
         }
         else{
             index=0;
         }
-        doPlayKaraoke();
+
+        if (btnActionState==BtnActionState.PLAY_KARAOKE) {
+            doPlayKaraoke();
+        }
+        else if (btnActionState==BtnActionState.PLAY_FAMILY){
+            doPlayFamily();
+        }
     }
 
     private void setupCastListener() {
@@ -254,75 +605,98 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             }
 
             @Override
-            public void onSessionStarting(CastSession session) {}
+            public void onSessionStarting(CastSession session) {
+                Log.d("JS_Tag", "onSessionStarting");
+            }
 
             @Override
-            public void onSessionEnding(CastSession session) {}
+            public void onSessionEnding(CastSession session) {
+                Log.d("JS_Tag", "onSessionEnding");
+            }
 
             @Override
-            public void onSessionResuming(CastSession session, String sessionId) {}
+            public void onSessionResuming(CastSession session, String sessionId) {
+                Log.d("JS_Tag", "onSessionResuming");
+            }
 
             @Override
-            public void onSessionSuspended(CastSession session, int reason) {}
+            public void onSessionSuspended(CastSession session, int reason) {
+                Log.d("JS_Tag", "onSessionSuspended");
+            }
 
             private void onApplicationConnected(CastSession castSession) {
                 mCastSession = castSession;
+                Log.d("JS_Tag", "mCastSession (onApplicationConnected)="+String.valueOf(mCastSession));
                 //loadRemoteMedia(/*mSeekbar.getProgress()*/ 0, true);
                 //finish();
-                if (mCastSession==null){
-                    return;
-                }
-                final RemoteMediaClient remoteMediaClient = mCastSession.getRemoteMediaClient();
-                if (remoteMediaClient == null) {
-                    return;
-                }
-                remoteMediaClient.addListener(new RemoteMediaClient.Listener() {
-                    @Override
-                    public void onStatusUpdated() {
-                        MediaStatus mediaStatus = remoteMediaClient.getMediaStatus();
-                        if (mediaStatus == null) return;
-                        int currentState = mediaStatus.getPlayerState();
-                        Log.d("JS_Tag", "preState="+String.valueOf(m_PreviousState)+", currentState="+String.valueOf(currentState));
-                        if ((m_PreviousState==MediaStatus.PLAYER_STATE_PLAYING)&&(currentState==MediaStatus.PLAYER_STATE_IDLE)){
-                            doNext();
-                        }
-                        m_PreviousState = currentState;
-                    }
-
-                    @Override
-                    public void onMetadataUpdated() {
-                    }
-
-                    @Override
-                    public void onQueueStatusUpdated() {
-                    }
-
-                    @Override
-                    public void onPreloadStatusUpdated() {
-                    }
-
-                    @Override
-                    public void onSendingRemoteMediaRequest() {
-                    }
-                });
 
                 invalidateOptionsMenu();
             }
 
             private void onApplicationDisconnected() {
+                mCastSession = null;
+                Log.d("JS_Tag", "mCastSession (onApplicationDisconnected)="+String.valueOf(mCastSession));
+
+                doStop();
+
                 invalidateOptionsMenu();
             }
         };
     }
 
     private void loadRemoteMedia(int position, boolean autoPlay) {
-        if (mCastSession == null) {
+        if (mCastSession==null){
             return;
         }
-        final RemoteMediaClient remoteMediaClient = mCastSession.getRemoteMediaClient();
+        RemoteMediaClient remoteMediaClient = mCastSession.getRemoteMediaClient();
         if (remoteMediaClient == null) {
             return;
         }
+        remoteMediaClient.addListener(new RemoteMediaClient.Listener() {
+            @Override
+            public void onStatusUpdated() {
+                MediaStatus mediaStatus = mCastSession.getRemoteMediaClient().getMediaStatus();
+                if (mediaStatus == null) return;
+                int currentState = mediaStatus.getPlayerState();
+                Log.d("JS_Tag", "preState="+String.valueOf(m_PreviousState)+", currentState="+String.valueOf(currentState));
+                if ((m_PreviousState!=MediaStatus.PLAYER_STATE_IDLE)&&(currentState==MediaStatus.PLAYER_STATE_IDLE)){
+                    int idleReason = mediaStatus.getIdleReason();
+                    Log.d("JS_Tag", "idleStateReason="+String.valueOf(idleReason));
+                    if ((btnActionState!=BtnActionState.STOP) && (idleReason==MediaStatus.IDLE_REASON_FINISHED)) {
+                        if (isRepeat){
+                            if (btnActionState==BtnActionState.PLAY_KARAOKE){
+                                doPlayKaraoke();
+                            }
+                            else if (btnActionState==BtnActionState.PLAY_FAMILY){
+                                doPlayFamily();
+                            }
+                        }
+                        else {
+                            doNext();
+                        }
+                    }
+                }
+                m_PreviousState = currentState;
+            }
+
+            @Override
+            public void onMetadataUpdated() {
+            }
+
+            @Override
+            public void onQueueStatusUpdated() {
+            }
+
+            @Override
+            public void onPreloadStatusUpdated() {
+            }
+
+            @Override
+            public void onSendingRemoteMediaRequest() {
+            }
+        });
+
+        Log.d("JS_Tag", "loadRemoteMedia, remoteMediaClient="+String.valueOf(remoteMediaClient));
         remoteMediaClient.load(buildMediaInfo(), autoPlay, position);
         //remoteMediaClient.queueLoad(buildQueueItems(),0, MediaStatus.REPEAT_MODE_REPEAT_OFF, null);
         Toast.makeText(getApplicationContext(), "position="+String.valueOf(position), Toast.LENGTH_SHORT).show();
@@ -345,7 +719,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 .build();
     }
 
-    private void getKtvFiles() {
+    private void getKtvFiles(LinkedList<Song> songList, File ktvDir) {
         if (ktvDir.exists() && ktvDir.isDirectory()) {
             ktvFiles = ktvDir.listFiles(new FilenameFilter() {
                 @Override
@@ -358,7 +732,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 return;
             }
 
-            songList = new LinkedList<Song>();
+            //songList = new LinkedList<Song>();
             for (int i = 0; i < ktvFiles.length; i++) {
                 String songName= getSongNameFromFilename(ktvFiles[i].getName());
                 String songPath = ktvFiles[i].getAbsolutePath();
@@ -422,7 +796,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
         return songPri;
     }
-    private void prioritizeMusic(){
+    private void prioritizeMusic(LinkedList<Song> songList){
         int totalSongCnt = songList.size();
         int currentPos = 0;
         int ii;

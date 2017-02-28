@@ -52,6 +52,8 @@ public class VideoServer extends NanoHTTPD {
     }
 
     public Response responseRootPage(IHTTPSession session) {
+        Log.d("JS_Tag", "VideoServer: responseRootPage, mVideoFilePath="+mVideoFilePath);
+
         File file = new File(mVideoFilePath);
         if(!file.exists()) {
             return response404(session,mVideoFilePath);
@@ -73,7 +75,7 @@ public class VideoServer extends NanoHTTPD {
     public Response responseVideoStream(IHTTPSession session) {
         try {
             FileInputStream fis = new FileInputStream(mVideoFilePath);
-            Log.d("JS_Tag", "responseVideoStream");
+            Log.d("JS_Tag", "VideoServer: responseVideoStream, mVideoFilePath="+mVideoFilePath);
             return new NanoHTTPD.Response(Status.OK, "video/mp4", fis);
         }
         catch (FileNotFoundException e) {
