@@ -432,8 +432,13 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         if (remoteMediaClient == null) {
             return;
         }
-        remoteMediaClient.stop();
-        Log.d("JS_Tag", "remoteMediaClient.stop(); remoteMediaClient="+String.valueOf(remoteMediaClient));
+
+        //++ Workaround "remoteMediaClient.stop();" unstable issue by load empty media (By JaShun)
+        //remoteMediaClient.stop();
+        //Log.d("JS_Tag", "doStop, remoteMediaClient.stop(); remoteMediaClient="+String.valueOf(remoteMediaClient));
+        remoteMediaClient.load(buildEmptyMediaInfo(), true, 0);
+        Log.d("JS_Tag", "doStop, remoteMediaClient.load(buildEmptyMediaInfo(), true, 0); remoteMediaClient="+String.valueOf(remoteMediaClient));
+        //--
     }
 
     private void doPlayFamily(){
@@ -717,6 +722,25 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 .setMetadata(movieMetadata)
                 //.setStreamDuration(100 * 1000) // In ms
                 .build();
+    }
+    private MediaInfo buildEmptyMediaInfo() {
+        MediaMetadata movieMetadata = new MediaMetadata(MediaMetadata.MEDIA_TYPE_MOVIE);
+
+        //movieMetadata.putString(MediaMetadata.KEY_SUBTITLE, mSelectedMedia.getStudio());
+        movieMetadata.putString(MediaMetadata.KEY_TITLE, "Empty");
+        //movieMetadata.addImage(new WebImage(Uri.parse(mSelectedMedia.getImage(0))));
+        //movieMetadata.addImage(new WebImage(Uri.parse(mSelectedMedia.getImage(1))));
+
+        //Log.d("JS_Tag", "mSelectedMedia.getUrl()="+mSelectedMedia.getUrl());
+
+        //++ Use Invalid Port to stop Remote Media (workaround for remoteMediaClient.stop unstable issue)
+        return new MediaInfo.Builder("http://"+getLocalIpStr(this))
+                .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
+                .setContentType("videos/mp4")
+                .setMetadata(movieMetadata)
+                //.setStreamDuration(100 * 1000) // In ms
+                .build();
+        //--
     }
 
     private void getKtvFiles(LinkedList<Song> songList, File ktvDir) {
