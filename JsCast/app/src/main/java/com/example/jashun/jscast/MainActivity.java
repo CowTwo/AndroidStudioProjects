@@ -3,6 +3,7 @@ package com.example.jashun.jscast;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Color;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Environment;
@@ -42,29 +43,39 @@ import com.google.android.gms.cast.framework.media.RemoteMediaClient;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener{
 
-    enum BtnActionState{
+    enum BtnPlayState{
         PLAY_KARAOKE,
         PLAY_FAMILY,
+        PLAY_OTHER,
         STOP
     }
 
-    private Button btn_play_karaoke, btn_play_family, btn_stop, btn_next, btn_prev, btn_repeat, btn_cancel_repeat;
-    private Button btn_find_by_voice;
+    private class MatchedResult{
+        int matchedCharCnt=0;
+        int matchedSongIdx=-1;
+    }
+
+    private Button btn_play_karaoke, btn_play_family,btn_play_other, btn_stop;
+    private Button btn_type_normal, btn_type_karaoke;
+    private Button btn_repeat, btn_cancel_repeat;
+    private Button btn_next, btn_prev, btn_find_by_voice;
     private final int REQ_CODE_SPEECH_INPUT = 100;
     private TextView txt_info;
     private boolean isRepeat;
 
     private File karaokeDir = new File("/sdcard/JsCast/Karaoke/");
     private File familyDir = new File("/sdcard/JsCast/Family/");
-    private File[] ktvFiles;
-    private LinkedList<Song> karaokeList, familyList, playList;
+    private File otherDir = new File("/sdcard/JsCast/Other/");
+
+    private File[] videoFiles;
+    private LinkedList<Song> karaokeList, familyList, otherList;
 
     private VideoServer mVideoServer;
 
     private boolean isTypeKaraoke;
     private int index;
     private String m_SongDesc="";
-    private BtnActionState btnActionState=BtnActionState.STOP;
+    private BtnPlayState btnPlayState=BtnPlayState.STOP;
 
     private MenuItem mediaRouteMenuItem;
     private CastContext mCastContext=null;
@@ -89,14 +100,19 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         startDebugLog2File();
 
         karaokeList = new LinkedList<Song>();
-        getKtvFiles(karaokeList, karaokeDir);
+        getVideoFiles(karaokeList, karaokeDir);
         prioritizeMusic(karaokeList);
         Log.d("JS_Tag", "onCreate: TotalKaraokeFileNum ="+String.valueOf(karaokeList.size()));
 
         familyList = new LinkedList<Song>();
-        getKtvFiles(familyList, familyDir);
+        getVideoFiles(familyList, familyDir);
         prioritizeMusic(familyList);
         Log.d("JS_Tag", "onCreate: TotalFamilyFileNum ="+String.valueOf(familyList.size()));
+
+        otherList = new LinkedList<Song>();
+        getVideoFiles(otherList, otherDir);
+        prioritizeMusic(otherList);
+        Log.d("JS_Tag", "onCreate: TotalOtherFileNum ="+String.valueOf(otherList.size()));
 
         startVideoServer();
 
@@ -148,8 +164,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private void hideAllButtons(){
         btn_play_karaoke.setEnabled(false);
+        btn_play_other.setEnabled(false);
         btn_play_family.setEnabled(false);
         btn_stop.setEnabled(false);
+        btn_type_normal.setEnabled(false);
+        btn_type_karaoke.setEnabled(false);
         btn_repeat.setEnabled(false);
         btn_cancel_repeat.setEnabled(false);
         btn_prev.setEnabled(false);
@@ -158,6 +177,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     }
     private void showAllButtonsAfterHide(){
         btn_play_karaoke.setEnabled(true);
+        btn_play_other.setEnabled(true);
         btn_play_family.setEnabled(true);
         btn_stop.setEnabled(false);
         if (isRepeat){
@@ -166,6 +186,14 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         } else{
             btn_repeat.setEnabled(true);
             btn_cancel_repeat.setEnabled(false);
+        }
+        if (isTypeKaraoke){
+            btn_type_normal.setEnabled(true);
+            btn_type_karaoke.setEnabled(false);
+        }
+        else{
+            btn_type_normal.setEnabled(false);
+            btn_type_karaoke.setEnabled(true);
         }
         btn_prev.setEnabled(true);
         btn_next.setEnabled(true);
@@ -199,7 +227,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
             // clear the previous logcat and then write the new one to the file
             try {
-                Runtime.getRuntime().exec("rm "+logFile);
+                //Runtime.getRuntime().exec("rm "+logFile);
                 Process process = Runtime.getRuntime().exec( "logcat -c");
                 // 為了知道log發生的時間點，可以利用-v time這個參數
                 // logcat -s TAG 印出特定TAG的訊息
@@ -251,19 +279,23 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private void initView() {
         btn_play_karaoke = (Button) findViewById(R.id.btn_play_karaoke);
+        btn_play_other = (Button) findViewById(R.id.btn_play_other);
         btn_play_family = (Button) findViewById(R.id.btn_play_family);
+        btn_type_normal = (Button) findViewById(R.id.btn_type_normal);
+        btn_type_karaoke = (Button) findViewById(R.id.btn_type_karaoke);
         btn_stop = (Button) findViewById(R.id.btn_stop);
         btn_next = (Button) findViewById(R.id.btn_next);
         btn_prev = (Button) findViewById(R.id.btn_prev);
         btn_repeat = (Button) findViewById(R.id.btn_repeat);
         btn_cancel_repeat = (Button) findViewById(R.id.btn_cancel_repeat);
         btn_find_by_voice = (Button) findViewById(R.id.btn_find_by_voice);
-
-        btn_stop.setEnabled(false);
-        btn_cancel_repeat.setEnabled(false);
+        txt_info = (TextView) findViewById(R.id.txt_info);
 
         btn_play_karaoke.setOnClickListener(this);
+        btn_play_other.setOnClickListener(this);
         btn_play_family.setOnClickListener(this);
+        btn_type_normal.setOnClickListener(this);
+        btn_type_karaoke.setOnClickListener(this);
         btn_stop.setOnClickListener(this);
         btn_next.setOnClickListener(this);
         btn_prev.setOnClickListener(this);
@@ -271,38 +303,58 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         btn_cancel_repeat.setOnClickListener(this);
         btn_find_by_voice.setOnClickListener(this);
 
-        txt_info = (TextView) findViewById(R.id.txt_info);
+        btn_prev.setBackgroundColor(0xffffccff);
+        btn_next.setBackgroundColor(0xffffccff);
+        btn_find_by_voice.setBackgroundColor(0xffffccff);
     }
 
     @Override
     public void onClick(View v) {
         switch (v.getId()) {
             case R.id.btn_play_karaoke:
-                btnActionState = BtnActionState.PLAY_KARAOKE;
-                //doStop();  Do NOT do this, 因當 Stop 與 Load 太接近，Cast Device 會skip 到 Load
-                doPlayKaraoke();
+                btnPlayState = BtnPlayState.PLAY_KARAOKE;
+                doPlay();
                 break;
             case R.id.btn_play_family:
-                btnActionState = BtnActionState.PLAY_FAMILY;
-                //doStop();  Do NOT do this, 因當 Stop 與 Load 太接近，Cast Device 會skip 到 Load
-                doPlayFamily();
+                btnPlayState = BtnPlayState.PLAY_FAMILY;
+                doPlay();
+                break;
+            case R.id.btn_play_other:
+                btnPlayState = BtnPlayState.PLAY_OTHER;
+                doPlay();
+                break;
+            case R.id.btn_type_normal:
+                if (btnPlayState==BtnPlayState.STOP){
+                    btnPlayState = BtnPlayState.PLAY_KARAOKE;
+                }
+                isTypeKaraoke = false;
+                btn_type_karaoke.setEnabled(true);
+                btn_type_normal.setEnabled(false);
+                doPlay();
+                break;
+            case R.id.btn_type_karaoke:
+                if (btnPlayState==BtnPlayState.STOP){
+                    btnPlayState = BtnPlayState.PLAY_KARAOKE;
+                }
+                isTypeKaraoke = true;
+                btn_type_karaoke.setEnabled(false);
+                btn_type_normal.setEnabled(true);
+                doPlay();
                 break;
             case R.id.btn_stop:
-                btnActionState = BtnActionState.STOP;
+                btnPlayState = BtnPlayState.STOP;
                 doStop();
                 break;
             case R.id.btn_next:
-                if (btnActionState==BtnActionState.STOP){
-                    btnActionState = BtnActionState.PLAY_KARAOKE;
+                if (btnPlayState==BtnPlayState.STOP){
+                    btnPlayState = BtnPlayState.PLAY_KARAOKE;
                 }
-                //doStop();  Do NOT do this, 因當 Stop 與 Load 太接近，Cast Device 會skip 到 Load
                 doNext();
                 break;
             case R.id.btn_prev:
-                if (btnActionState==BtnActionState.STOP){
-                    btnActionState = BtnActionState.PLAY_KARAOKE;
+                if (btnPlayState==BtnPlayState.STOP){
+                    btnPlayState = BtnPlayState.PLAY_KARAOKE;
                 }
-                //doStop();  Do NOT do this, 因當 Stop 與 Load 太接近，Cast Device 會skip 到 Load
                 doPrev();
                 break;
             case R.id.btn_repeat:
@@ -356,10 +408,20 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
                     ArrayList<String> result = data
                             .getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
-                    int matchedSongIdx = findSongIdxByVoiceCmd(karaokeList, result.get(0));
+                    MatchedResult karaokeMatchedResult = findSongIdxByVoiceCmd(karaokeList, result.get(0));
+                    MatchedResult otherMatchedResult = findSongIdxByVoiceCmd(otherList, result.get(0));
+                    int matchedSongIdx=-1;
+                    if (karaokeMatchedResult.matchedCharCnt >= otherMatchedResult.matchedCharCnt){
+                        btnPlayState = BtnPlayState.PLAY_KARAOKE;
+                        matchedSongIdx = karaokeMatchedResult.matchedSongIdx;
+                    }
+                    else{
+                        btnPlayState = BtnPlayState.PLAY_OTHER;
+                        matchedSongIdx = otherMatchedResult.matchedSongIdx;
+                    }
                     if (matchedSongIdx!=-1){
                         index = matchedSongIdx;
-                        doPlayKaraoke();
+                        doPlay();
                     }else{
                         txt_info.setText("無:"+result.get(0));
                     }
@@ -369,7 +431,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         }
     }
-    private int findSongIdxByVoiceCmd(LinkedList<Song> songList, String voiceCmd){
+    private MatchedResult findSongIdxByVoiceCmd(LinkedList<Song> songList, String voiceCmd){
         // 去除空白
         voiceCmd = voiceCmd.replaceAll("\\s+", "");
 
@@ -406,7 +468,12 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 }
             }
         }
-        return maxMatchedSongIdx;
+
+        MatchedResult matchedResult= new MatchedResult();
+        matchedResult.matchedCharCnt=maxMatchedCnt;
+        matchedResult.matchedSongIdx=maxMatchedSongIdx;
+
+        return matchedResult;
     }
     public boolean isNumeric(String str)
     {
@@ -423,6 +490,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         Log.d("JS_Tag", "doStop");
         btn_play_karaoke.setEnabled(true);
         btn_play_family.setEnabled(true);
+        btn_play_other.setEnabled(true);
         btn_stop.setEnabled(false);
 
         if (mCastSession==null){
@@ -441,62 +509,51 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         //--
     }
 
-    private void doPlayFamily(){
-        Log.d("JS_Tag", "doPlayFamily, index="+String.valueOf(index));
-        String songFilePath;
-        playList = familyList;
-        if (playList == null || playList.size() == 0) {
-            return;
-        }
-        if (index>=playList.size()){
-            index = playList.size()-1;
-        }
+    private void doPlay(){
+        LinkedList<Song> playList;
+        String songFilePath=null;
+        Log.d("JS_Tag", "doPlay");
 
-        btn_play_family.setEnabled(false);
-        btn_play_karaoke.setEnabled(true);
-        btn_stop.setEnabled(true);
-
-        songFilePath = playList.get(index).getNormalFilePath();
-
-        if (songFilePath != null) {
-            int songNo = playList.get(index).getSongNo();
-            if (songNo>0) {
-                m_SongDesc = playList.get(index).getSongName() + "(" + String.valueOf(songNo) + ")";
-            }else{
-                m_SongDesc = playList.get(index).getSongName();
+        if (btnPlayState==BtnPlayState.PLAY_KARAOKE) {
+            btn_play_karaoke.setEnabled(false);
+            btn_play_family.setEnabled(true);
+            btn_play_other.setEnabled(true);
+            btn_stop.setEnabled(true);
+            playList = karaokeList;
+            if (playList == null || playList.size() == 0) {return;}
+            if (index>=playList.size()){index = playList.size()-1;}
+            if (isTypeKaraoke) {
+                songFilePath = playList.get(index).getKtvFilePath();
             }
-            txt_info.setText(m_SongDesc);
-
-            Log.d("JS_Tag", "doPlayFamily: songFilePath="+songFilePath);
-            mVideoServer.setVideoFilePath(songFilePath);
-            loadRemoteMedia(/*mSeekbar.getProgress()*/ 0, true);
-            //finish();
+            else{
+                songFilePath = playList.get(index).getNormalFilePath();
+            }
         }
-        else{
-            txt_info.setText("Invalid FilePath");
+        else if (btnPlayState==BtnPlayState.PLAY_FAMILY){
+            btn_play_family.setEnabled(false);
+            btn_play_karaoke.setEnabled(true);
+            btn_play_other.setEnabled(true);
+            btn_stop.setEnabled(true);
+            playList = familyList;
+            if (playList == null || playList.size() == 0) {return;}
+            if (index>=playList.size()){index = playList.size()-1;}
+            songFilePath = playList.get(index).getNormalFilePath();
         }
-    }
-
-    private void doPlayKaraoke() {
-        Log.d("JS_Tag", "doPlayKaraoke, index="+String.valueOf(index));
-        String songFilePath;
-        playList = karaokeList;
-        if (playList == null || playList.size() == 0) {
-            return;
-        }
-        if (index>=playList.size()){
-            index = playList.size()-1;
-        }
-        btn_play_karaoke.setEnabled(false);
-        btn_play_family.setEnabled(true);
-        btn_stop.setEnabled(true);
-
-        if (isTypeKaraoke) {
+        else if (btnPlayState==BtnPlayState.PLAY_OTHER){
+            btn_play_family.setEnabled(true);
+            btn_play_karaoke.setEnabled(true);
+            btn_play_other.setEnabled(false);
+            btn_stop.setEnabled(true);
+            playList = otherList;
+            if (playList == null || playList.size() == 0) {return;}
+            if (index>=playList.size()){index = playList.size()-1;}
             songFilePath = playList.get(index).getKtvFilePath();
         }
         else{
-            songFilePath = playList.get(index).getNormalFilePath();
+            Log.d("JS_Tag", "doPlay: Invalid PlayState!!");
+            return;
         }
+
         if (songFilePath != null) {
             int songNo = playList.get(index).getSongNo();
             if (songNo>0) {
@@ -506,25 +563,37 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             }
             txt_info.setText(m_SongDesc);
 
-            Log.d("JS_Tag", "doPlayKaraoke: songFilePath="+songFilePath);
+            Log.d("JS_Tag", "doPlay, index="+String.valueOf(index));
+            Log.d("JS_Tag", "doPlay, songFilePath="+songFilePath);
             mVideoServer.setVideoFilePath(songFilePath);
             loadRemoteMedia(/*mSeekbar.getProgress()*/ 0, true);
             //finish();
         }
         else{
+            Log.d("JS_Tag", "doPlay: songFilePath="+"Invalid FilePath");
             txt_info.setText("Invalid FilePath");
         }
+
+    }
+
+    private LinkedList<Song> getActPlayList(){
+        LinkedList<Song> playList = null;
+        if (btnPlayState==BtnPlayState.PLAY_KARAOKE) {
+            playList = karaokeList;
+        }
+        else if (btnPlayState==BtnPlayState.PLAY_FAMILY){
+            playList = familyList;
+        }
+        else if (btnPlayState==BtnPlayState.PLAY_OTHER){
+            playList = otherList;
+        }
+        return playList;
     }
 
     private void doPrev(){
         Log.d("JS_Tag", "doPrev");
-        playList = null;
-        if (btnActionState==BtnActionState.PLAY_KARAOKE) {
-            playList = karaokeList;
-        }
-        else if (btnActionState==BtnActionState.PLAY_FAMILY){
-            playList = familyList;
-        }
+
+        LinkedList<Song> playList = getActPlayList();
 
         if (playList == null || playList.size() == 0) {
             return;
@@ -537,23 +606,13 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             index=playList.size()-1;
         }
 
-        if (btnActionState==BtnActionState.PLAY_KARAOKE) {
-            doPlayKaraoke();
-        }
-        else if (btnActionState==BtnActionState.PLAY_FAMILY){
-            doPlayFamily();
-        }
+        doPlay();
     }
 
     private void doNext() {
-        Log.d("JS_Tag", "doNext,  btnActionState="+String.valueOf(btnActionState));
-        playList = null;
-        if (btnActionState==BtnActionState.PLAY_KARAOKE) {
-            playList = karaokeList;
-        }
-        else if (btnActionState==BtnActionState.PLAY_FAMILY){
-            playList = familyList;
-        }
+        Log.d("JS_Tag", "doNext,  btnPlayState="+String.valueOf(btnPlayState));
+
+        LinkedList<Song> playList = getActPlayList();
 
         if (playList == null || playList.size() == 0) {
             return;
@@ -566,12 +625,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             index=0;
         }
 
-        if (btnActionState==BtnActionState.PLAY_KARAOKE) {
-            doPlayKaraoke();
-        }
-        else if (btnActionState==BtnActionState.PLAY_FAMILY){
-            doPlayFamily();
-        }
+        doPlay();
     }
 
     private void setupCastListener() {
@@ -667,14 +721,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 if ((m_PreviousState!=MediaStatus.PLAYER_STATE_IDLE)&&(currentState==MediaStatus.PLAYER_STATE_IDLE)){
                     int idleReason = mediaStatus.getIdleReason();
                     Log.d("JS_Tag", "idleStateReason="+String.valueOf(idleReason));
-                    if ((btnActionState!=BtnActionState.STOP) && (idleReason==MediaStatus.IDLE_REASON_FINISHED)) {
+                    if ((btnPlayState!=BtnPlayState.STOP) && (idleReason==MediaStatus.IDLE_REASON_FINISHED)) {
                         if (isRepeat){
-                            if (btnActionState==BtnActionState.PLAY_KARAOKE){
-                                doPlayKaraoke();
-                            }
-                            else if (btnActionState==BtnActionState.PLAY_FAMILY){
-                                doPlayFamily();
-                            }
+                            doPlay();
                         }
                         else {
                             doNext();
@@ -743,23 +792,23 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         //--
     }
 
-    private void getKtvFiles(LinkedList<Song> songList, File ktvDir) {
-        if (ktvDir.exists() && ktvDir.isDirectory()) {
-            ktvFiles = ktvDir.listFiles(new FilenameFilter() {
+    private void getVideoFiles(LinkedList<Song> songList, File videoDir) {
+        if (videoDir.exists() && videoDir.isDirectory()) {
+            videoFiles = videoDir.listFiles(new FilenameFilter() {
                 @Override
                 public boolean accept(File dir, String name) {
                     return name.contains(".mp4");
                 }
             });
 
-            if (ktvFiles.length==0){
+            if (videoFiles.length==0){
                 return;
             }
 
             //songList = new LinkedList<Song>();
-            for (int i = 0; i < ktvFiles.length; i++) {
-                String songName= getSongNameFromFilename(ktvFiles[i].getName());
-                String songPath = ktvFiles[i].getAbsolutePath();
+            for (int i = 0; i < videoFiles.length; i++) {
+                String songName= getSongNameFromFilename(videoFiles[i].getName());
+                String songPath = videoFiles[i].getAbsolutePath();
 
                 boolean isSongNameExisted = false;
                 Song oldSong=null, song=null;
