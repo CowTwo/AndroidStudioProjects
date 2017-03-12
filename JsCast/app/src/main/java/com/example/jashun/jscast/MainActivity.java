@@ -444,6 +444,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             for (int j = 0; j < songList.size(); j++) {
                 if (songList.get(j).getSongNo()==songNo){
                     maxMatchedSongIdx = j;
+                    maxMatchedCnt=songNo;
                 }
             }
         } else {
