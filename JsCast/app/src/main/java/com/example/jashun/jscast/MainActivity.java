@@ -227,7 +227,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
             // clear the previous logcat and then write the new one to the file
             try {
-                //Runtime.getRuntime().exec("rm "+logFile);
+                Runtime.getRuntime().exec("rm "+logFile);
                 Process process = Runtime.getRuntime().exec( "logcat -c");
                 // 為了知道log發生的時間點，可以利用-v time這個參數
                 // logcat -s TAG 印出特定TAG的訊息
