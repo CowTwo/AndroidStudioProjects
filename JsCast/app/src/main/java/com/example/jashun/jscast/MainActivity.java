@@ -19,7 +19,9 @@ import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.FilenameFilter;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -67,6 +69,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private File familyDir = new File("/sdcard/JsCast/Family/");
     private File otherDir = new File("/sdcard/JsCast/Other/");
 
+    private String fdbgfile = "/sdcard/JsCast/dbgLog.txt";
+
     private File[] videoFiles;
     private LinkedList<Song> karaokeList, familyList, otherList;
 
@@ -103,16 +107,19 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         getVideoFiles(karaokeList, karaokeDir);
         prioritizeMusic(karaokeList);
         Log.d("JS_Tag", "onCreate: TotalKaraokeFileNum ="+String.valueOf(karaokeList.size()));
+        logToFile(fdbgfile, "onCreate: TotalKaraokeFileNum ="+String.valueOf(karaokeList.size()));
 
         familyList = new LinkedList<Song>();
         getVideoFiles(familyList, familyDir);
         prioritizeMusic(familyList);
         Log.d("JS_Tag", "onCreate: TotalFamilyFileNum ="+String.valueOf(familyList.size()));
+        logToFile(fdbgfile, "onCreate: TotalFamilyFileNum ="+String.valueOf(familyList.size()));
 
         otherList = new LinkedList<Song>();
         getVideoFiles(otherList, otherDir);
         prioritizeMusic(otherList);
         Log.d("JS_Tag", "onCreate: TotalOtherFileNum ="+String.valueOf(otherList.size()));
+        logToFile(fdbgfile, "onCreate: TotalOtherFileNum ="+String.valueOf(otherList.size()));
 
         startVideoServer();
 
@@ -121,6 +128,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         mCastContext.registerLifecycleCallbacksBeforeIceCreamSandwich(this, savedInstanceState);
         mCastSession = mCastContext.getSessionManager().getCurrentCastSession();
         Log.d("JS_Tag", "mCastSession (onCreate) ="+String.valueOf(mCastSession));
+        logToFile(fdbgfile, "mCastSession (onCreate) ="+String.valueOf(mCastSession));
 
         setupCastListener();
         mCastContext.getSessionManager().addSessionManagerListener(
@@ -135,6 +143,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         mediaRouteMenuItem = CastButtonFactory.setUpMediaRouteButton(getApplicationContext(), menu,
                 R.id.media_route_menu_item);
         Log.d("JS_Tag", "onCreateOptionsMenu");
+        logToFile(fdbgfile, "onCreateOptionsMenu");
 
         return true;
     }
@@ -147,6 +156,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         if (isCastConnected) {
             Log.d("JS_Tag", "menu.setGroupVisible(0,false);");
+            logToFile(fdbgfile, "menu.setGroupVisible(0,false);");
             //menu.findItem(R.id.media_route_menu_item).setEnabled(false);
             menu.setGroupVisible(0,false);
             this.setTitle("連線成功");
@@ -154,6 +164,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
         else{
             Log.d("JS_Tag", "menu.setGroupVisible(0,true);");
+            logToFile(fdbgfile, "menu.setGroupVisible(0,true);");
             //menu.findItem(R.id.media_route_menu_item).setEnabled(true);
             menu.setGroupVisible(0,true);
             this.setTitle("XXX, 請連線... ==>>");
@@ -203,6 +214,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     @Override
     protected void onDestroy() {
         Log.d("JS_Tag", "onDestroy");
+        logToFile(fdbgfile, "onDestroy");
         doStop();
         mVideoServer.stop();
         super.onDestroy();
@@ -487,8 +499,32 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         return true;
     }
 
+    private Boolean logToFile(String fpath, String fcontent){
+        try {
+            File file = new File(fpath);
+
+            // If file does not exists, then create it
+            if (!file.exists()) {
+                file.createNewFile();
+            }
+
+            FileWriter fw = new FileWriter(file.getAbsoluteFile(), true); //the true will append the new data
+            BufferedWriter bw = new BufferedWriter(fw);
+            bw.write(fcontent);
+            bw.close();
+
+            //Log.d("Suceess","Sucess");
+            return true;
+
+        } catch (IOException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
     private void doStop() {
         Log.d("JS_Tag", "doStop");
+        logToFile(fdbgfile, "doStop");
         btn_play_karaoke.setEnabled(true);
         btn_play_family.setEnabled(true);
         btn_play_other.setEnabled(true);
@@ -507,6 +543,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         //Log.d("JS_Tag", "doStop, remoteMediaClient.stop(); remoteMediaClient="+String.valueOf(remoteMediaClient));
         remoteMediaClient.load(buildEmptyMediaInfo(), true, 0);
         Log.d("JS_Tag", "doStop, remoteMediaClient.load(buildEmptyMediaInfo(), true, 0); remoteMediaClient="+String.valueOf(remoteMediaClient));
+        logToFile(fdbgfile, "doStop, remoteMediaClient.load(buildEmptyMediaInfo(), true, 0); remoteMediaClient="+String.valueOf(remoteMediaClient));
         //--
     }
 
@@ -514,6 +551,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         LinkedList<Song> playList;
         String songFilePath=null;
         Log.d("JS_Tag", "doPlay");
+        logToFile(fdbgfile, "doPlay");
 
         if (btnPlayState==BtnPlayState.PLAY_KARAOKE) {
             btn_play_karaoke.setEnabled(false);
@@ -552,6 +590,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
         else{
             Log.d("JS_Tag", "doPlay: Invalid PlayState!!");
+            logToFile(fdbgfile, "doPlay: Invalid PlayState!!");
             return;
         }
 
@@ -565,13 +604,16 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             txt_info.setText(m_SongDesc);
 
             Log.d("JS_Tag", "doPlay, index="+String.valueOf(index));
+            logToFile(fdbgfile, "doPlay, index="+String.valueOf(index));
             Log.d("JS_Tag", "doPlay, songFilePath="+songFilePath);
+            logToFile(fdbgfile, "doPlay, songFilePath="+songFilePath);
             mVideoServer.setVideoFilePath(songFilePath);
             loadRemoteMedia(/*mSeekbar.getProgress()*/ 0, true);
             //finish();
         }
         else{
             Log.d("JS_Tag", "doPlay: songFilePath="+"Invalid FilePath");
+            logToFile(fdbgfile, "doPlay: songFilePath="+"Invalid FilePath");
             txt_info.setText("Invalid FilePath");
         }
 
@@ -593,6 +635,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private void doPrev(){
         Log.d("JS_Tag", "doPrev");
+        logToFile(fdbgfile, "doPrev");
 
         LinkedList<Song> playList = getActPlayList();
 
@@ -612,6 +655,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private void doNext() {
         Log.d("JS_Tag", "doNext,  btnPlayState="+String.valueOf(btnPlayState));
+        logToFile(fdbgfile, "doNext,  btnPlayState="+String.valueOf(btnPlayState));
 
         LinkedList<Song> playList = getActPlayList();
 
@@ -631,62 +675,73 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private void setupCastListener() {
         Log.d("JS_Tag", "setupCastListener");
+        logToFile(fdbgfile, "setupCastListener");
 
         mSessionManagerListener = new SessionManagerListener<CastSession>() {
 
             @Override
             public void onSessionEnded(CastSession session, int error) {
                 Log.d("JS_Tag", "onSessionEnded");
+                logToFile(fdbgfile, "onSessionEnded");
                 onApplicationDisconnected();
             }
 
             @Override
             public void onSessionResumed(CastSession session, boolean wasSuspended) {
                 Log.d("JS_Tag", "onSessionResumed");
+                logToFile(fdbgfile, "onSessionResumed");
                 onApplicationConnected(session);
             }
 
             @Override
             public void onSessionResumeFailed(CastSession session, int error) {
                 Log.d("JS_Tag", "onSessionResumeFailed");
+                logToFile(fdbgfile, "onSessionResumeFailed");
                 onApplicationDisconnected();
             }
 
             @Override
             public void onSessionStarted(CastSession session, String sessionId) {
                 Log.d("JS_Tag", "onSessionStarted");
+                logToFile(fdbgfile, "onSessionStarted");
                 onApplicationConnected(session);
             }
 
             @Override
             public void onSessionStartFailed(CastSession session, int error) {
                 Log.d("JS_Tag", "onSessionStartFailed");
+                logToFile(fdbgfile, "onSessionStartFailed");
                 onApplicationDisconnected();
             }
 
             @Override
             public void onSessionStarting(CastSession session) {
                 Log.d("JS_Tag", "onSessionStarting");
+                logToFile(fdbgfile, "onSessionStarting");
             }
 
             @Override
             public void onSessionEnding(CastSession session) {
                 Log.d("JS_Tag", "onSessionEnding");
+                logToFile(fdbgfile, "onSessionEnding");
             }
 
             @Override
             public void onSessionResuming(CastSession session, String sessionId) {
                 Log.d("JS_Tag", "onSessionResuming");
+                logToFile(fdbgfile, "onSessionResuming");
             }
 
             @Override
             public void onSessionSuspended(CastSession session, int reason) {
                 Log.d("JS_Tag", "onSessionSuspended");
+                logToFile(fdbgfile, "onSessionSuspended");
             }
 
             private void onApplicationConnected(CastSession castSession) {
                 mCastSession = castSession;
                 Log.d("JS_Tag", "mCastSession (onApplicationConnected)="+String.valueOf(mCastSession));
+                logToFile(fdbgfile, "mCastSession (onApplicationConnected)="+String.valueOf(mCastSession));
                 //loadRemoteMedia(/*mSeekbar.getProgress()*/ 0, true);
                 //finish();
 
@@ -696,6 +751,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             private void onApplicationDisconnected() {
                 mCastSession = null;
                 Log.d("JS_Tag", "mCastSession (onApplicationDisconnected)="+String.valueOf(mCastSession));
+                logToFile(fdbgfile, "mCastSession (onApplicationDisconnected)="+String.valueOf(mCastSession));
 
                 doStop();
 
@@ -719,9 +775,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 if (mediaStatus == null) return;
                 int currentState = mediaStatus.getPlayerState();
                 Log.d("JS_Tag", "preState="+String.valueOf(m_PreviousState)+", currentState="+String.valueOf(currentState));
+                logToFile(fdbgfile, "preState="+String.valueOf(m_PreviousState)+", currentState="+String.valueOf(currentState));
                 if ((m_PreviousState!=MediaStatus.PLAYER_STATE_IDLE)&&(currentState==MediaStatus.PLAYER_STATE_IDLE)){
                     int idleReason = mediaStatus.getIdleReason();
                     Log.d("JS_Tag", "idleStateReason="+String.valueOf(idleReason));
+                    logToFile(fdbgfile, "idleStateReason="+String.valueOf(idleReason));
                     if ((btnPlayState!=BtnPlayState.STOP) && (idleReason==MediaStatus.IDLE_REASON_FINISHED)) {
                         if (isRepeat){
                             doPlay();
@@ -752,6 +810,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         });
 
         Log.d("JS_Tag", "loadRemoteMedia, remoteMediaClient="+String.valueOf(remoteMediaClient));
+        logToFile(fdbgfile, "loadRemoteMedia, remoteMediaClient="+String.valueOf(remoteMediaClient));
         remoteMediaClient.load(buildMediaInfo(), autoPlay, position);
         //remoteMediaClient.queueLoad(buildQueueItems(),0, MediaStatus.REPEAT_MODE_REPEAT_OFF, null);
         Toast.makeText(getApplicationContext(), "position="+String.valueOf(position), Toast.LENGTH_SHORT).show();
