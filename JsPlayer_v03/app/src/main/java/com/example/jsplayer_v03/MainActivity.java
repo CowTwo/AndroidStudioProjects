@@ -2,14 +2,17 @@ package com.example.jsplayer_v03;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.content.ActivityNotFoundException;
 import android.content.ContentResolver;
 import android.content.ContentUris;
+import android.content.Intent;
 import android.database.Cursor;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.provider.MediaStore;
+import android.speech.RecognizerIntent;
 import android.telephony.PhoneStateListener;
 import android.telephony.TelephonyManager;
 import android.util.Log;
@@ -19,7 +22,9 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.ArrayList;
 import java.util.LinkedList;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -30,7 +35,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private MediaPlayer mediaPlayer;
     private double startTime;
     private double finalTime;
-    private Button btn_play, btn_pause, btn_repeat, btn_cancel_repeat, btn_prev, btn_favor, btn_next, btn_forward;
+    private Button btn_play, btn_pause, btn_repeat, btn_cancel_repeat, btn_prev, btn_favor, btn_next, btn_forward, btn_voice;
     private TextView txt_title, txt_start_time, txt_end_time;
     private SeekBar seekbar;
     private LinkedList<Song> songList;
@@ -42,6 +47,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private int forwardTime;
     private boolean isCellPlay;
     private TelephonyManager phoneyMana;
+    private final int REQ_CODE_SPEECH_INPUT = 100;
+    private Handler myHandler2;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -58,6 +66,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         forwardTime = 5000;
         myHandler = new Handler();
         forwardTime = 5000;
+        myHandler2 = new Handler();
 
         Log.d("JsWan", "before initView");
         initView();
@@ -80,6 +89,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             mediaPlayer = null;
         }
         phoneyMana.listen(null, PhoneStateListener.LISTEN_NONE);
+        myHandler2.removeCallbacks(DebounceFindButton);
 
         super.onDestroy();
     }
@@ -93,6 +103,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         btn_next = (Button) findViewById(R.id.btn_next);
         btn_favor = (Button) findViewById(R.id.btn_favor);
         btn_forward=(Button) findViewById(R.id.btn_forward);
+        btn_voice = (Button) findViewById(R.id.btn_voice);
 
         btn_pause.setEnabled(false);
         btn_cancel_repeat.setEnabled(false);
@@ -105,6 +116,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         btn_next.setOnClickListener(this);
         btn_favor.setOnClickListener(this);
         btn_forward.setOnClickListener(this);
+        btn_voice.setOnClickListener(this);
 
         txt_title = (TextView) findViewById(R.id.txt_title);
         txt_start_time=(TextView) findViewById(R.id.txt_start_time);
@@ -173,10 +185,23 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             case R.id.btn_forward:
                 doForward();
                 break;
+            case R.id.btn_voice:
+                Log.d("JsWan","Test voice command");
+                btn_voice.setEnabled(false);
+                promptSpeechInput();
+                myHandler2.postDelayed(DebounceFindButton, 3000);
+                break;
             default:
                 break;
         }
     }
+
+    private Runnable DebounceFindButton = new Runnable() {
+        public void run() {
+            btn_voice.setEnabled(true);
+        }
+    };
+
 
     @Override
     public void onCompletion(MediaPlayer mp) {
@@ -344,6 +369,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 Song song = new Song();
                 song.setId(thisId);
                 song.setTitle(thisTitle);
+                song.setSongName(thisTitle);
                 song.setAlbum(thisAlbum);
 
                 songList.add(song);
@@ -381,5 +407,104 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             }
         }
     }
+    /**
+     * Showing google speech input dialog
+     * */
+    private void promptSpeechInput() {
+        if (mediaPlayer!=null) {
+            mediaPlayer.stop();
+        }
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
+        intent.putExtra(RecognizerIntent.EXTRA_PROMPT,
+                "say input sentence");
+        try {
+            startActivityForResult(intent, REQ_CODE_SPEECH_INPUT);
+        } catch (ActivityNotFoundException a) {
+            Toast.makeText(getApplicationContext(),
+                    "Speech not supported",
+                    Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * Receiving speech input
+     * */
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        switch (requestCode) {
+            case REQ_CODE_SPEECH_INPUT: {
+                if (resultCode == RESULT_OK && null != data) {
+
+                    ArrayList<String> result = data
+                            .getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+                    int matchedSongIdx = findSongIdxByVoiceCmd(result.get(0));
+                    if (matchedSongIdx!=-1){
+                        index = matchedSongIdx;
+                        doPlay();
+                    }else{
+                        txt_title.setText("無:"+result.get(0));
+                    }
+                }
+                break;
+            }
+
+        }
+    }
+
+    private int findSongIdxByVoiceCmd(String voiceCmd){
+        // 去除空白
+        voiceCmd = voiceCmd.replaceAll("\\s+", "");
+
+        // Algo
+        int maxMatchedCnt = 0;
+        int maxMatchedSongIdx = -1;
+
+        if (isNumeric(voiceCmd)){
+            int songNo = parseInt(voiceCmd);
+            for (int j = 0; j < songList.size(); j++) {
+                if (songList.get(j).getSongNo()==songNo){
+                    maxMatchedSongIdx = j;
+                }
+            }
+        } else {
+            for (int j = 0; j < songList.size(); j++) {
+                int matchedCharCnt = 0;
+                String songName = songList.get(j).getSongName();
+                int voiceCmdLen = voiceCmd.length();
+
+                String tmpSongName = songName;
+                for (int k = 0; k <voiceCmdLen; k++) {
+                    if (tmpSongName.indexOf(voiceCmd.charAt(k)) != -1) {
+                        matchedCharCnt += 1;
+                        tmpSongName = tmpSongName.replaceFirst(Character.toString(voiceCmd.charAt(k)), "");
+                    }
+                }
+                if (matchedCharCnt > maxMatchedCnt) {
+                    maxMatchedCnt = matchedCharCnt;
+                    maxMatchedSongIdx = j;
+                }
+                if (maxMatchedCnt==voiceCmdLen){
+                    break;
+                }
+            }
+        }
+        return maxMatchedSongIdx;
+    }
+    public boolean isNumeric(String str)
+    {
+        Pattern pattern = Pattern.compile("[0-9]*");
+        Matcher isNum = pattern.matcher(str);
+        if( !isNum.matches() )
+        {
+            return false;
+        }
+        return true;
+    }
+
 }
 

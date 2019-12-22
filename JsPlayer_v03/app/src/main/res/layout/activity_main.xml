@@ -7,6 +7,18 @@
     tools:context=".MainActivity">
 
     <Button
+        android:id="@+id/btn_voice"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignTop="@+id/btn_prev"
+        android:layout_alignBottom="@+id/btn_prev"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="-109dp"
+        android:layout_marginBottom="109dp"
+        android:text="找"
+        android:textSize="50sp" />
+
+    <Button
         android:text="唱歌"
         android:textSize="50sp"
         android:layout_width="wrap_content"
