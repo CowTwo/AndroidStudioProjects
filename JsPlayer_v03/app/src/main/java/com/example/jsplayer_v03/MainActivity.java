@@ -228,6 +228,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         if (songList == null || songList.size() == 0) {
             return;
         }
+
+        Log.d("JsWan", "doPlay index="+index);
         btn_play.setEnabled(false);
         btn_pause.setEnabled(true);
 
@@ -258,6 +260,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         else{
             index=0;
         }
+        Log.d("JsWan", "doNext index"+index);
         isPause=false;
         doPlay();
     }
@@ -273,6 +276,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         else{
             index=songList.size()-1;
         }
+        Log.d("JsWan", "doPrev index"+index);
         isPause=false;
         doPlay();
     }
@@ -282,6 +286,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             return;
         }
         index = 0;
+        Log.d("JsWan", "doFavor index"+index);
         isPause=false;
         doPlay();
     }
@@ -294,6 +299,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         if (mediaPlayer == null) {
             long id = songList.get(index).getId();
+            Log.d("JsWan", "playing index="+index);
             Uri songUri = ContentUris.withAppendedId(android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id);
 
             mediaPlayer = MediaPlayer.create(this, songUri);
@@ -412,6 +418,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
      * */
     private void promptSpeechInput() {
         if (mediaPlayer!=null) {
+            doPlay(); // do this to workaround found index overwritten by doNext
             mediaPlayer.stop();
         }
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
@@ -443,8 +450,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     ArrayList<String> result = data
                             .getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
                     int matchedSongIdx = findSongIdxByVoiceCmd(result.get(0));
+                    Log.d("JsWan", "voidCmd="+result.get(0));
                     if (matchedSongIdx!=-1){
                         index = matchedSongIdx;
+                        Log.d("JsWan", "playIdx="+index);
                         doPlay();
                     }else{
                         txt_title.setText("無:"+result.get(0));
@@ -459,10 +468,12 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private int findSongIdxByVoiceCmd(String voiceCmd){
         // 去除空白
         voiceCmd = voiceCmd.replaceAll("\\s+", "");
+        Log.d("JsWan", "trimmedVoidCmd="+voiceCmd);
 
         // Algo
         int maxMatchedCnt = 0;
         int maxMatchedSongIdx = -1;
+        String maxMatchedSongName = "";
 
         if (isNumeric(voiceCmd)){
             int songNo = parseInt(voiceCmd);
@@ -487,7 +498,12 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 if (matchedCharCnt > maxMatchedCnt) {
                     maxMatchedCnt = matchedCharCnt;
                     maxMatchedSongIdx = j;
+                    maxMatchedSongName = songName;
                 }
+                Log.d("JsWan", "songName="+songName+", matchedCharCnt, ="+String.valueOf(matchedCharCnt));
+                Log.d("JsWan", "maxMatchedCnt="+String.valueOf(maxMatchedCnt));
+                Log.d("JsWan", "maxMatchedSongName="+maxMatchedSongName);
+                Log.d("JsWan", "maxMatchedSongIdx="+String.valueOf(maxMatchedSongIdx));
                 if (maxMatchedCnt==voiceCmdLen){
                     break;
                 }
